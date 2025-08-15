@@ -1157,118 +1157,7 @@ app.use('/orders', express.static('orders'));
 // Serve completion photos
 app.use('/completion-photos', express.static('completion-photos'));
 
-// Upload completion photo and attempt automatic image recognition matching
-app.post('/api/completion-photos', completionPhotoUpload.single('completionPhoto'), async (req, res) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({ error: 'No completion photo uploaded' });
-    }
-
-    const { printFacilityId } = req.body;
-    
-    if (!printFacilityId) {
-      return res.status(400).json({ error: 'Print Facility ID is required' });
-    }
-
-    // Generate unique ID for completion photo
-    const photoId = uuidv4();
-    const photoPath = req.file.filename;
-
-    // Store completion photo record with temporary orderItemId (will be updated after recognition)
-    db.run(`INSERT INTO completion_photos (id, orderItemId, photoPath, status, printFacilityId) VALUES (?, ?, ?, 'pending', ?)`, 
-      [photoId, null, photoPath, printFacilityId], function(err) {
-      if (err) {
-        console.error('Error storing completion photo:', err);
-        return res.status(500).json({ error: 'Failed to store completion photo' });
-      }
-
-      // Get order items assigned to this print facility that don't have completion photos yet
-      const query = `
-        SELECT oi.id as orderItemId, oi.designImage, oi.color, oi.size, oi.quantity, 
-               o.orderNumber, o.customerName, o.id as orderId
-        FROM order_items oi
-        JOIN orders o ON oi.orderId = o.id
-        LEFT JOIN completion_photos cp ON oi.id = cp.orderItemId AND cp.status = 'matched'
-        WHERE o.printFacilityId = ? 
-          AND o.status = 'printing' 
-          AND oi.completionStatus = 'pending'
-          AND cp.id IS NULL
-        ORDER BY o.assignedAt DESC
-      `;
-
-      db.all(query, [printFacilityId], async (err, orderItems) => {
-        if (err) {
-          console.error('Error fetching order items for recognition:', err);
-          return res.status(500).json({ error: 'Database error' });
-        }
-
-        if (orderItems.length === 0) {
-          // No pending orders found
-          db.run(`UPDATE completion_photos SET status = 'no_matches' WHERE id = ?`, [photoId]);
-          return res.json({ 
-            success: true, 
-            photoId,
-            message: 'Completion photo uploaded, but no pending orders found for this facility.' 
-          });
-        }
-
-        // Log what order items are being considered for matching
-        console.log(`Photo matching against ${orderItems.length} order items:`);
-        orderItems.forEach(item => {
-          console.log(`  - Order #${item.orderNumber}: ${item.color} ${item.size} (ID: ${item.orderItemId})`);
-        });
-
-        // Attempt image recognition against all pending order items
-        try {
-          const bestMatch = await findBestImageMatch(photoPath, orderItems);
-          
-          if (bestMatch) {
-            // Update completion photo with the best match
-            db.run(`UPDATE completion_photos SET orderItemId = ?, matchedOrderItemId = ?, confidenceScore = ?, status = ? WHERE id = ?`, 
-              [bestMatch.orderItemId, bestMatch.orderItemId, bestMatch.confidence, 'matched', photoId], (err) => {
-              if (err) {
-                console.error('Error updating completion photo with match:', err);
-              }
-            });
-
-            res.json({ 
-              success: true, 
-              photoId,
-              message: `Completion photo matched to Order #${bestMatch.orderNumber} - ${bestMatch.color} ${bestMatch.size} (Confidence: ${(bestMatch.confidence * 100).toFixed(1)}%)`,
-              match: bestMatch
-            });
-          } else {
-            // No good match found
-            db.run(`UPDATE completion_photos SET status = 'needs_review' WHERE id = ?`, [photoId]);
-            res.json({ 
-              success: true, 
-              photoId,
-              message: 'Completion photo uploaded, but no confident match found. Manual review required.',
-              orderItems: orderItems.map(item => ({
-                orderNumber: item.orderNumber,
-                color: item.color,
-                size: item.size,
-                quantity: item.quantity
-              }))
-            });
-          }
-        } catch (recognitionError) {
-          console.error('Image recognition error:', recognitionError);
-          db.run(`UPDATE completion_photos SET status = 'needs_review' WHERE id = ?`, [photoId]);
-          res.json({ 
-            success: true, 
-            photoId,
-            message: 'Completion photo uploaded, but image recognition failed. Manual review required.' 
-          });
-        }
-      });
-    });
-
-  } catch (error) {
-    console.error('Error uploading completion photo:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
+// Upload completion photo and attempt automatic image recognition matching - MOVED TO END to avoid intercepting specific routes
 
 // Get completion photos for a print facility
 app.get('/api/print-facilities/:facilityId/completion-photos', (req, res) => {
@@ -1693,6 +1582,119 @@ app.get('/api/print-facilities/:facilityId', (req, res) => {
     }
     res.json(facility);
   });
+});
+
+// Upload completion photo and attempt automatic image recognition matching - moved here to avoid intercepting specific routes
+app.post('/api/completion-photos', completionPhotoUpload.single('completionPhoto'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No completion photo uploaded' });
+    }
+
+    const { printFacilityId } = req.body;
+    
+    if (!printFacilityId) {
+      return res.status(400).json({ error: 'Print Facility ID is required' });
+    }
+
+    // Generate unique ID for completion photo
+    const photoId = uuidv4();
+    const photoPath = req.file.filename;
+
+    // Store completion photo record with temporary orderItemId (will be updated after recognition)
+    db.run(`INSERT INTO completion_photos (id, orderItemId, photoPath, status, printFacilityId) VALUES (?, ?, ?, 'pending', ?)`, 
+      [photoId, null, photoPath, printFacilityId], function(err) {
+      if (err) {
+        console.error('Error storing completion photo:', err);
+        return res.status(500).json({ error: 'Failed to store completion photo' });
+      }
+
+      // Get order items assigned to this print facility that don't have completion photos yet
+      const query = `
+        SELECT oi.id as orderItemId, oi.designImage, oi.color, oi.size, oi.quantity, 
+               o.orderNumber, o.customerName, o.id as orderId
+        FROM order_items oi
+        JOIN orders o ON oi.orderId = o.id
+        LEFT JOIN completion_photos cp ON oi.id = cp.orderItemId AND cp.status = 'matched'
+        WHERE o.printFacilityId = ? 
+          AND o.status = 'printing' 
+          AND oi.completionStatus = 'pending'
+          AND cp.id IS NULL
+        ORDER BY o.assignedAt DESC
+      `;
+
+      db.all(query, [printFacilityId], async (err, orderItems) => {
+        if (err) {
+          console.error('Error fetching order items for recognition:', err);
+          return res.status(500).json({ error: 'Database error' });
+        }
+
+        if (orderItems.length === 0) {
+          // No pending orders found
+          db.run(`UPDATE completion_photos SET status = 'no_matches' WHERE id = ?`, [photoId]);
+          return res.json({ 
+            success: true, 
+            photoId,
+            message: 'Completion photo uploaded, but no pending orders found for this facility.' 
+          });
+        }
+
+        // Log what order items are being considered for matching
+        console.log(`Photo matching against ${orderItems.length} order items:`);
+        orderItems.forEach(item => {
+          console.log(`  - Order #${item.orderNumber}: ${item.color} ${item.size} (ID: ${item.orderItemId})`);
+        });
+
+        // Attempt image recognition against all pending order items
+        try {
+          const bestMatch = await findBestImageMatch(photoPath, orderItems);
+          
+          if (bestMatch) {
+            // Update completion photo with the best match
+            db.run(`UPDATE completion_photos SET orderItemId = ?, matchedOrderItemId = ?, confidenceScore = ?, status = ? WHERE id = ?`, 
+              [bestMatch.orderItemId, bestMatch.orderItemId, bestMatch.confidence, 'matched', photoId], (err) => {
+              if (err) {
+                console.error('Error updating completion photo with match:', err);
+              }
+            });
+
+            res.json({ 
+              success: true, 
+              photoId,
+              message: `Completion photo matched to Order #${bestMatch.orderNumber} - ${bestMatch.color} ${bestMatch.size} (Confidence: ${(bestMatch.confidence * 100).toFixed(1)}%)`,
+              match: bestMatch
+            });
+          } else {
+            // No good match found
+            db.run(`UPDATE completion_photos SET status = 'needs_review' WHERE id = ?`, [photoId]);
+            res.json({ 
+              success: true, 
+              photoId,
+              message: 'Completion photo uploaded, but no confident match found. Manual review required.',
+              orderItems: orderItems.map(item => ({
+                orderNumber: item.orderNumber,
+                color: item.color,
+                size: item.size,
+                quantity: item.quantity
+              }))
+            });
+          }
+        } catch (recognitionError) {
+          console.error('Image recognition error:', recognitionError);
+          db.run(`UPDATE completion_photos SET status = 'needs_review' WHERE id = ?`, [photoId]);
+          res.json({ 
+            success: true, 
+            photoId,
+            message: 'Completion photo uploaded, but image recognition failed. Manual review required.' 
+          });
+        }
+      });
+    });
+
+  } catch (error) {
+    console.error('Error uploading completion photo:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 // Catch all handler for React app
