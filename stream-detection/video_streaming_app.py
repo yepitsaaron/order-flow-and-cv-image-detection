@@ -72,25 +72,12 @@ class TShirtDetector:
             if current_time - self.last_order_refresh < self.order_refresh_interval:
                 return
             
-            response = requests.get(f"{self.api_base_url}/api/print-facilities/{self.facility_id}/completion-photos")
+            # Use the new available order items endpoint for better data
+            response = requests.get(f"{self.api_base_url}/api/print-facilities/{self.facility_id}/available-order-items")
             if response.status_code == 200:
-                # Get unique order items that are pending
+                # Get order items that don't have completion photos yet
                 orders_data = response.json()
-                unique_orders = {}
-                
-                for photo in orders_data:
-                    if photo.get('orderItemId') and photo.get('designImage'):
-                        order_key = f"{photo['orderNumber']}_{photo['color']}_{photo['size']}"
-                        if order_key not in unique_orders:
-                            unique_orders[order_key] = {
-                                'orderItemId': photo['orderItemId'],
-                                'orderNumber': photo['orderNumber'],
-                                'color': photo['color'],
-                                'designImage': photo['designImage'],
-                                'quantity': photo['quantity']
-                            }
-                
-                self.pending_orders = list(unique_orders.values())
+                self.pending_orders = orders_data
                 self.last_order_refresh = current_time
                 logger.info(f"Refreshed {len(self.pending_orders)} pending orders")
                 
@@ -273,6 +260,15 @@ class TShirtDetector:
                     if order_key not in self.last_snapshot_time or current_time - self.last_snapshot_time[order_key] > 5:  # 5 second cooldown
                         self.capture_and_process_snapshot(frame, matching_order, detected_color, design_features)
                         self.last_snapshot_time[order_key] = current_time
+                else:
+                    # No match found - capture snapshot for later manual assignment
+                    current_time = time.time()
+                    if not hasattr(self, 'last_unmatched_snapshot_time'):
+                        self.last_unmatched_snapshot_time = 0
+                    
+                    if current_time - self.last_unmatched_snapshot_time > 10:  # 10 second cooldown for unmatched
+                        self.capture_unmatched_snapshot(frame, detected_color, design_features)
+                        self.last_unmatched_snapshot_time = current_time
                 
                 return True, detected_color, matching_order
             else:
@@ -303,6 +299,10 @@ class TShirtDetector:
             # Draw facility info
             cv2.putText(frame, f"Facility: {self.facility_id}", (10, frame.shape[0] - 20), 
                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
+            
+            # Add instruction for unmatched photos
+            cv2.putText(frame, "Press 'r' to refresh orders, 'q' to quit", (10, frame.shape[0] - 40), 
+                      cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
             
         except Exception as e:
             logger.error(f"Error drawing results: {e}")
@@ -366,6 +366,63 @@ class TShirtDetector:
         except Exception as e:
             logger.error(f"Error capturing and processing snapshot: {e}")
             cv2.putText(frame, "SNAPSHOT ERROR", 
+                      (10, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
+    
+    def capture_unmatched_snapshot(self, frame, detected_color, design_features):
+        """Capture a snapshot when no matching order is found for later manual assignment"""
+        try:
+            # Create snapshots directory if it doesn't exist
+            snapshots_dir = 'snapshots'
+            if not os.path.exists(snapshots_dir):
+                os.makedirs(snapshots_dir)
+            
+            # Generate snapshot filename
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            snapshot_filename = f"unmatched_{detected_color}_{timestamp}.jpg"
+            snapshot_path = os.path.join(snapshots_dir, snapshot_filename)
+            
+            # Save the snapshot
+            cv2.imwrite(snapshot_path, frame)
+            logger.info(f"Unmatched snapshot saved: {snapshot_path}")
+            
+            # Calculate confidence score based on detection quality
+            confidence = min(0.6 + (design_features['feature_count'] / 200), 0.8)  # Lower confidence for unmatched
+            
+            # Prepare data for API call - no orderItemId since it's unmatched
+            snapshot_data = {
+                'printFacilityId': self.facility_id,
+                'detectedColor': detected_color,
+                'confidence': confidence
+                # Note: No orderItemId - this will be assigned manually later
+            }
+            
+            # Create form data for file upload
+            with open(snapshot_path, 'rb') as snapshot_file:
+                files = {'completionPhoto': (snapshot_filename, snapshot_file, 'image/jpeg')}
+                
+                # Send snapshot to completion photos API for manual assignment
+                response = requests.post(
+                    f"{self.api_base_url}/api/completion-photos",
+                    data=snapshot_data,
+                    files=files
+                )
+                
+                if response.status_code == 200:
+                    result = response.json()
+                    logger.info(f"Unmatched snapshot uploaded successfully: {result['message']}")
+                    
+                    # Add success indicator to frame
+                    cv2.putText(frame, f"UNMATCHED SNAPSHOT SAVED - Manual Assignment Required", 
+                              (10, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 165, 0), 2)
+                    
+                else:
+                    logger.error(f"Failed to upload unmatched snapshot: {response.status_code} - {response.text}")
+                    cv2.putText(frame, "UNMATCHED SNAPSHOT FAILED", 
+                              (10, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
+                    
+        except Exception as e:
+            logger.error(f"Error capturing unmatched snapshot: {e}")
+            cv2.putText(frame, "UNMATCHED SNAPSHOT ERROR", 
                       (10, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
     
     def run(self):

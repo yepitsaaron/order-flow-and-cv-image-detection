@@ -1467,25 +1467,25 @@ app.post('/api/video-detection/snapshot', completionPhotoUpload.single('snapshot
     const snapshotId = uuidv4();
     const snapshotPath = req.file.filename;
 
-    // Store the snapshot
-    db.run(`INSERT INTO completion_photos (id, orderItemId, photoPath, status, confidenceScore) VALUES (?, ?, ?, 'matched', ?)`, 
-      [snapshotId, orderItemId, snapshotPath, confidence || 1.0], function(err) {
+    // Store the snapshot with printFacilityId and proper linking
+    db.run(`INSERT INTO completion_photos (id, orderItemId, photoPath, status, confidenceScore, printFacilityId, matchedOrderItemId) VALUES (?, ?, ?, 'matched', ?, ?, ?)`, 
+      [snapshotId, orderItemId, snapshotPath, confidence || 1.0, printFacilityId, orderItemId], function(err) {
       if (err) {
         console.error('Error storing snapshot:', err);
         return res.status(500).json({ error: 'Failed to store snapshot' });
       }
 
-      // Update the order item to "printed" status
-      db.run(`UPDATE order_items SET completionStatus = 'printed', completedAt = CURRENT_TIMESTAMP, completionPhoto = ? WHERE id = ?`, 
+      // Update the order item to "completed" status (consistent with our new system)
+      db.run(`UPDATE order_items SET completionStatus = 'completed', completedAt = CURRENT_TIMESTAMP, completionPhoto = ? WHERE id = ?`, 
         [snapshotPath, orderItemId], function(err) {
         if (err) {
-          console.error('Error updating order item to printed:', err);
+          console.error('Error updating order item to completed:', err);
           return res.status(500).json({ error: 'Failed to update order item status' });
         }
 
-        // Check if all order items in this order are now printed
+        // Check if all order items in this order are now completed
         db.get(`SELECT o.id, o.orderNumber, COUNT(oi.id) as totalItems, 
-                       SUM(CASE WHEN oi.completionStatus = 'printed' THEN 1 ELSE 0 END) as printedItems
+                       SUM(CASE WHEN oi.completionStatus = 'completed' THEN 1 ELSE 0 END) as completedItems
                 FROM orders o
                 JOIN order_items oi ON o.id = oi.orderId
                 WHERE oi.id = ?
@@ -1496,8 +1496,8 @@ app.post('/api/video-detection/snapshot', completionPhotoUpload.single('snapshot
           }
 
           if (orderSummary) {
-            const allPrinted = orderSummary.totalItems === orderSummary.printedItems;
-            const newOrderStatus = allPrinted ? 'Press Complete' : 'Printing';
+            const allCompleted = orderSummary.totalItems === orderSummary.completedItems;
+            const newOrderStatus = allCompleted ? 'Completed' : 'Printing';
 
             // Update order status
             db.run(`UPDATE orders SET status = ? WHERE id = ?`, [newOrderStatus, orderSummary.id], function(err) {
@@ -1508,19 +1508,19 @@ app.post('/api/video-detection/snapshot', completionPhotoUpload.single('snapshot
               res.json({ 
                 success: true, 
                 snapshotId,
-                message: `T-shirt marked as printed. Order status: ${newOrderStatus}`,
+                message: `T-shirt marked as completed. Order status: ${newOrderStatus}`,
                 orderStatus: newOrderStatus,
                 orderNumber: orderSummary.orderNumber,
-                printedItems: orderSummary.printedItems,
+                completedItems: orderSummary.completedItems,
                 totalItems: orderSummary.totalItems,
-                allPrinted: allPrinted
+                allCompleted: allCompleted
               });
             });
           } else {
             res.json({ 
               success: true, 
               snapshotId,
-              message: 'T-shirt marked as printed successfully'
+              message: 'T-shirt marked as completed successfully'
             });
           }
         });
@@ -1545,7 +1545,7 @@ app.get('/api/print-facilities/:facilityId/video-snapshots', (req, res) => {
       FROM completion_photos cp
       JOIN order_items oi ON cp.orderItemId = oi.id
       JOIN orders o ON oi.orderId = o.id
-      WHERE o.printFacilityId = ? AND cp.status = 'matched'
+      WHERE cp.printFacilityId = ? AND cp.status = 'matched'
       ORDER BY cp.uploadedAt DESC
     `;
 
