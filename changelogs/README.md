@@ -22,6 +22,15 @@ This directory contains comprehensive summaries of major changes, improvements, 
   - Corrected static file serving middleware placement
   - Improved API route precedence handling
 
+### **IMAGE_SIMILARITY_FIX_SUMMARY.md**
+- **Date**: August 15, 2024
+- **Focus**: Critical fix for image similarity function regression
+- **Key Changes**:
+  - Fixed dramatic drop in similarity scores from 84%+ to 34%
+  - Restored Sharp-based image processing in compareImagesDirectly function
+  - Updated resizeImageWithOpenCV helper for consistent processing
+  - Image recognition accuracy restored to previous working levels
+
 ### **REACT_IMPROVEMENTS_SUMMARY.md**
 - **Date**: August 15, 2024
 - **Focus**: Frontend React component improvements and enhancements
