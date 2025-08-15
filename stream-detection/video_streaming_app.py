@@ -28,14 +28,16 @@ class TShirtDetector:
         # Load pre-trained models for object detection
         self.face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
         
-        # Color ranges for t-shirt detection (HSV color space)
+        # Color ranges for t-shirt detection (HSV color space) - IMPROVED for real-world
+        # This can be augmented with more color ranges that are 1:1 with the t-shirt colors to improve detection accuracy
         self.color_ranges = {
-            'white': ([0, 0, 200], [180, 30, 255]),
-            'black': ([0, 0, 0], [180, 255, 30]),
-            'red': ([0, 100, 100], [10, 255, 255]),
-            'blue': ([100, 100, 100], [130, 255, 255]),
-            'yellow': ([20, 100, 100], [30, 255, 255]),
-            'green': ([40, 100, 100], [80, 255, 255])
+            'white': ([0, 0, 180], [180, 50, 255]),      # More inclusive white range
+            'black': ([0, 0, 0], [180, 255, 80]),        # More inclusive black range
+            'red': ([0, 80, 80], [15, 255, 255]),        # Red range
+            'orange': ([10, 80, 80], [25, 255, 255]),    # NEW: Orange range
+            'blue': ([95, 80, 80], [135, 255, 255]),     # Expanded blue range
+            'yellow': ([15, 60, 80], [35, 255, 255]),    # Expanded yellow range (more inclusive)
+            'green': ([35, 60, 80], [85, 255, 255])      # Expanded green range
         }
         
         # Initialize order cache
@@ -85,50 +87,202 @@ class TShirtDetector:
             logger.error(f"Error refreshing pending orders: {e}")
     
     def detect_t_shirt(self, frame):
-        """Detect if the frame contains a t-shirt"""
+        """Enhanced detection of t-shirts with graphics, writing, and multiple objects"""
         try:
-            # Convert to HSV color space for better color detection
+            # Convert to multiple color spaces for better detection
             hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             
-            # Create a mask for potential t-shirt regions
-            # Look for large areas of solid colors (typical of t-shirts)
+            # Create comprehensive mask for t-shirt regions
             t_shirt_mask = np.zeros(frame.shape[:2], dtype=np.uint8)
             
-            # Check each color range
+            # Method 1: Color-based detection (base t-shirt colors)
+            color_mask = np.zeros(frame.shape[:2], dtype=np.uint8)
             for color_name, (lower, upper) in self.color_ranges.items():
                 lower = np.array(lower, dtype=np.uint8)
                 upper = np.array(upper, dtype=np.uint8)
                 
                 # Create mask for this color
-                color_mask = cv2.inRange(hsv, lower, upper)
+                current_color_mask = cv2.inRange(hsv, lower, upper)
+                color_mask = cv2.bitwise_or(color_mask, current_color_mask)
+            
+            # Method 2: Edge-based detection for graphics and text
+            # Apply Gaussian blur to reduce noise
+            blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+            
+            # Use Canny edge detection to find edges (graphics, text, logos)
+            edges = cv2.Canny(blurred, 50, 150)
+            
+            # Method 3: Contour-based detection for complex shapes
+            # Find contours in the color mask
+            color_contours, _ = cv2.findContours(color_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            
+            # Find contours in the edge mask (graphics/text)
+            edge_contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            
+            # Combine and analyze contours
+            all_contours = []
+            
+            # Add color-based contours
+            for contour in color_contours:
+                area = cv2.contourArea(contour)
+                if area > 5000:  # Lower threshold to catch smaller elements
+                    all_contours.append(('color', contour, area))
+            
+            # Add edge-based contours (graphics, text)
+            for contour in edge_contours:
+                area = cv2.contourArea(contour)
+                if 100 < area < 50000:  # Graphics/text are usually smaller than full shirts
+                    all_contours.append(('edge', contour, area))
+            
+            logger.info(f"Found {len(color_contours)} color contours and {len(edge_contours)} edge contours")
+            logger.info(f"Total contours to process: {len(all_contours)}")
+            
+            # Group nearby contours that likely belong to the same t-shirt
+            grouped_regions = self._group_contours_by_proximity(all_contours, frame.shape)
+            logger.info(f"Grouped {len(all_contours)} contours into {len(grouped_regions)} regions")
+            
+            # Create final mask from grouped regions
+            for i, region in enumerate(grouped_regions):
+                region_mask = np.zeros(frame.shape[:2], dtype=np.uint8)
                 
-                # Find contours of this color
-                contours, _ = cv2.findContours(color_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                # Draw all contours in this region
+                for contour_type, contour, area in region:
+                    cv2.fillPoly(region_mask, [contour], 255)
                 
-                # Look for large contours (potential t-shirt areas)
-                for contour in contours:
-                    area = cv2.contourArea(contour)
-                    if area > 10000:  # Minimum area threshold
-                        # Check if contour has reasonable aspect ratio for t-shirt
-                        x, y, w, h = cv2.boundingRect(contour)
-                        aspect_ratio = w / h
-                        
-                        if 0.5 < aspect_ratio < 2.0:  # Reasonable t-shirt proportions
-                            t_shirt_mask = cv2.bitwise_or(t_shirt_mask, color_mask)
+                # Check if this region has reasonable t-shirt characteristics
+                if self._is_valid_t_shirt_region(region_mask, frame.shape):
+                    logger.info(f"Region {i} validated as t-shirt")
+                    t_shirt_mask = cv2.bitwise_or(t_shirt_mask, region_mask)
+                else:
+                    logger.info(f"Region {i} rejected as t-shirt")
             
             # If we found significant t-shirt-like regions
             t_shirt_pixels = np.sum(t_shirt_mask > 0)
             total_pixels = frame.shape[0] * frame.shape[1]
             t_shirt_ratio = t_shirt_pixels / total_pixels
             
-            return t_shirt_ratio > 0.1, t_shirt_mask  # 10% threshold
+            # Add debugging information
+            logger.info(f"T-shirt detection: {t_shirt_pixels} pixels, {total_pixels} total, ratio: {t_shirt_ratio:.4f}")
+            
+            # More lenient threshold for testing
+            return t_shirt_ratio > 0.02, t_shirt_mask  # Even lower threshold for better detection
             
         except Exception as e:
-            logger.error(f"Error in t-shirt detection: {e}")
+            logger.error(f"Error in enhanced t-shirt detection: {e}")
             return False, None
     
+    def _group_contours_by_proximity(self, contours, frame_shape):
+        """Group nearby contours that likely belong to the same t-shirt"""
+        try:
+            if not contours:
+                return []
+            
+            # Sort contours by area (largest first)
+            sorted_contours = sorted(contours, key=lambda x: x[2], reverse=True)
+            
+            groups = []
+            used = set()
+            
+            for i, (contour_type, contour, area) in enumerate(sorted_contours):
+                if i in used:
+                    continue
+                
+                # Start a new group
+                current_group = [(contour_type, contour, area)]
+                used.add(i)
+                
+                # Find nearby contours
+                for j, (other_type, other_contour, other_area) in enumerate(sorted_contours):
+                    if j in used:
+                        continue
+                    
+                    # Check if contours are close to each other
+                    if self._contours_are_nearby(contour, other_contour, frame_shape):
+                        current_group.append((other_type, other_contour, other_area))
+                        used.add(j)
+                
+                groups.append(current_group)
+            
+            return groups
+            
+        except Exception as e:
+            logger.error(f"Error grouping contours: {e}")
+            return []
+    
+    def _contours_are_nearby(self, contour1, contour2, frame_shape):
+        """Check if two contours are close enough to be part of the same t-shirt"""
+        try:
+            # Get bounding rectangles
+            x1, y1, w1, h1 = cv2.boundingRect(contour1)
+            x2, y2, w2, h2 = cv2.boundingRect(contour2)
+            
+            # Calculate centers
+            center1 = (x1 + w1//2, y1 + h1//2)
+            center2 = (x2 + w2//2, y2 + h2//2)
+            
+            # Calculate distance between centers
+            distance = np.sqrt((center1[0] - center2[0])**2 + (center1[1] - center2[1])**2)
+            
+            # Calculate frame diagonal for relative distance
+            frame_diagonal = np.sqrt(frame_shape[0]**2 + frame_shape[1]**2)
+            
+            # Contours are nearby if distance is less than 30% of frame diagonal
+            return distance < 0.3 * frame_diagonal
+            
+        except Exception as e:
+            logger.error(f"Error checking contour proximity: {e}")
+            return False
+    
+    def _is_valid_t_shirt_region(self, region_mask, frame_shape):
+        """Check if a region has reasonable t-shirt characteristics"""
+        try:
+            # Calculate region properties
+            region_pixels = np.sum(region_mask > 0)
+            total_pixels = frame_shape[0] * frame_shape[1]
+            region_ratio = region_pixels / total_pixels
+            
+            # Get region contours
+            contours, _ = cv2.findContours(region_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            
+            if not contours:
+                logger.info(f"Region validation: No contours found")
+                return False
+            
+            logger.info(f"Region validation: {region_pixels} pixels, {total_pixels} total, ratio: {region_ratio:.4f}")
+            
+            # Check if any contour has reasonable t-shirt proportions
+            for i, contour in enumerate(contours):
+                area = cv2.contourArea(contour)
+                if area < 1000:  # Too small
+                    logger.info(f"Contour {i}: Area {area} too small")
+                    continue
+                
+                x, y, w, h = cv2.boundingRect(contour)
+                aspect_ratio = w / h
+                
+                logger.info(f"Contour {i}: Area {area}, Size {w}x{h}, Aspect ratio {aspect_ratio:.2f}")
+                
+                # T-shirts typically have aspect ratios between 0.5 and 2.0
+                if 0.3 < aspect_ratio < 2.5:  # Slightly more flexible
+                    # Check if region size is reasonable - make more lenient for testing
+                    if 0.005 < region_ratio <= 1.0:  # Between 0.5% and 100% of frame (allow full frame for testing)
+                        logger.info(f"Contour {i} validated as t-shirt")
+                        return True
+                    else:
+                        logger.info(f"Contour {i}: Region ratio {region_ratio:.4f} outside valid range")
+                else:
+                    logger.info(f"Contour {i}: Aspect ratio {aspect_ratio:.2f} outside valid range")
+            
+            logger.info("No valid t-shirt contours found")
+            return False
+            
+        except Exception as e:
+            logger.error(f"Error validating t-shirt region: {e}")
+            return False
+    
     def detect_shirt_color(self, frame, t_shirt_mask):
-        """Detect the primary color of the detected t-shirt"""
+        """Enhanced color detection with improved HSV ranges and mixed color handling"""
         try:
             # Apply mask to isolate t-shirt region
             masked_frame = cv2.bitwise_and(frame, frame, mask=t_shirt_mask)
@@ -143,28 +297,65 @@ class TShirtDetector:
             
             avg_h, avg_s, avg_v = np.mean(valid_pixels, axis=0)
             
-            # Determine color based on HSV values
-            if avg_v < 50:  # Very dark
+            # Enhanced color detection with improved thresholds
+            if avg_v < 80:  # More inclusive dark threshold
                 return 'black'
-            elif avg_v > 200 and avg_s < 50:  # Very light, low saturation
+            elif avg_v > 180 and avg_s < 80:  # More inclusive light threshold
                 return 'white'
-            elif 0 <= avg_h <= 10 or 170 <= avg_h <= 180:  # Red
+            elif (0 <= avg_h <= 15) or (165 <= avg_h <= 180):  # Red range
                 return 'red'
-            elif 100 <= avg_h <= 130:  # Blue
+            elif 10 <= avg_h <= 25:  # NEW: Orange range
+                return 'orange'
+            elif 95 <= avg_h <= 135:  # Expanded blue range
                 return 'blue'
-            elif 20 <= avg_h <= 30:  # Yellow
+            elif 15 <= avg_h <= 35:  # Expanded yellow range
                 return 'yellow'
-            elif 40 <= avg_h <= 80:  # Green
+            elif 35 <= avg_h <= 85:  # Expanded green range
                 return 'green'
+            else:
+                # Try to determine dominant color from the mask
+                return self._detect_dominant_color_from_mask(hsv, t_shirt_mask)
+                
+        except Exception as e:
+            logger.error(f"Error in enhanced color detection: {e}")
+            return None
+    
+    def _detect_dominant_color_from_mask(self, hsv, t_shirt_mask):
+        """Fallback method to detect dominant color using color range matching"""
+        try:
+            max_pixels = 0
+            dominant_color = 'unknown'
+            
+            for color_name, (lower, upper) in self.color_ranges.items():
+                lower = np.array(lower, dtype=np.uint8)
+                upper = np.array(upper, dtype=np.uint8)
+                
+                # Create mask for this color
+                color_mask = cv2.inRange(hsv, lower, upper)
+                
+                # Apply t-shirt mask to get only t-shirt pixels
+                t_shirt_color_mask = cv2.bitwise_and(color_mask, t_shirt_mask)
+                
+                # Count pixels for this color
+                pixel_count = np.sum(t_shirt_color_mask > 0)
+                
+                if pixel_count > max_pixels:
+                    max_pixels = pixel_count
+                    dominant_color = color_name
+            
+            # Only return color if it has significant presence (>10% of t-shirt area)
+            t_shirt_area = np.sum(t_shirt_mask > 0)
+            if max_pixels > 0.1 * t_shirt_area:
+                return dominant_color
             else:
                 return 'unknown'
                 
         except Exception as e:
-            logger.error(f"Error in color detection: {e}")
-            return None
+            logger.error(f"Error in dominant color detection: {e}")
+            return 'unknown'
     
     def extract_design_features(self, frame, t_shirt_mask):
-        """Extract features from the t-shirt design/logo area"""
+        """Enhanced feature extraction for graphics, text, and complex designs"""
         try:
             # Apply mask to isolate t-shirt region
             masked_frame = cv2.bitwise_and(frame, frame, mask=t_shirt_mask)
@@ -172,25 +363,116 @@ class TShirtDetector:
             # Convert to grayscale for feature extraction
             gray = cv2.cvtColor(masked_frame, cv2.COLOR_BGR2GRAY)
             
-            # Use SIFT (Scale-Invariant Feature Transform) for feature detection
+            # Method 1: SIFT features for general design elements
             sift = cv2.SIFT_create()
             keypoints, descriptors = sift.detectAndCompute(gray, None)
             
-            if descriptors is not None:
-                # Return feature count and average descriptor as a simple signature
-                return {
-                    'feature_count': len(keypoints),
-                    'avg_descriptor': np.mean(descriptors, axis=0).tolist() if len(descriptors) > 0 else None
-                }
-            else:
-                return {'feature_count': 0, 'avg_descriptor': None}
+            # Method 2: Edge density analysis for graphics and text
+            edges = cv2.Canny(gray, 50, 150)
+            edge_density = np.sum(edges > 0) / np.sum(t_shirt_mask > 0) if np.sum(t_shirt_mask > 0) > 0 else 0
+            
+            # Method 3: Contour analysis for distinct objects
+            contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            
+            # Filter contours by size and complexity
+            design_contours = []
+            for contour in contours:
+                area = cv2.contourArea(contour)
+                if 100 < area < 10000:  # Reasonable size for design elements
+                    # Calculate contour complexity
+                    perimeter = cv2.arcLength(contour, True)
+                    complexity = area / (perimeter * perimeter) if perimeter > 0 else 0
+                    
+                    if complexity > 0.01:  # Filter out very simple shapes
+                        design_contours.append({
+                            'area': area,
+                            'complexity': complexity,
+                            'contour': contour
+                        })
+            
+            # Method 4: Text detection using morphological operations
+            # Create a kernel for morphological operations
+            kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+            
+            # Apply morphological operations to find text-like regions
+            dilated = cv2.dilate(edges, kernel, iterations=1)
+            text_regions = cv2.erode(dilated, kernel, iterations=1)
+            
+            # Count text-like regions
+            text_contours, _ = cv2.findContours(text_regions, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            text_count = len([c for c in text_contours if cv2.contourArea(c) > 50])
+            
+            # Calculate comprehensive design score
+            feature_count = len(keypoints) if keypoints is not None else 0
+            design_complexity = len(design_contours)
+            text_elements = text_count
+            overall_complexity = edge_density * 1000  # Scale edge density
+            
+            # Determine design type
+            design_type = self._classify_design_type(feature_count, design_complexity, text_elements, edge_density)
+            
+            return {
+                'feature_count': feature_count,
+                'avg_descriptor': np.mean(descriptors, axis=0).tolist() if descriptors is not None and len(descriptors) > 0 else None,
+                'design_contours': design_complexity,
+                'text_elements': text_elements,
+                'edge_density': edge_density,
+                'overall_complexity': overall_complexity,
+                'design_type': design_type
+            }
                 
         except Exception as e:
-            logger.error(f"Error in design feature extraction: {e}")
-            return {'feature_count': 0, 'avg_descriptor': None}
+            logger.error(f"Error in enhanced design feature extraction: {e}")
+            return {
+                'feature_count': 0,
+                'avg_descriptor': None,
+                'design_contours': 0,
+                'text_elements': 0,
+                'edge_density': 0,
+                'overall_complexity': 0,
+                'design_type': 'unknown'
+            }
+    
+    def _classify_design_type(self, feature_count, design_contours, text_elements, edge_density):
+        """Classify the type of design on the t-shirt"""
+        try:
+            # Calculate overall complexity score
+            complexity_score = (feature_count * 0.3 + 
+                              design_contours * 0.3 + 
+                              text_elements * 0.2 + 
+                              edge_density * 1000 * 0.2)
+            
+            logger.info(f"Design classification: features={feature_count}, contours={design_contours}, text={text_elements}, edge_density={edge_density:.4f}, complexity={complexity_score:.1f}")
+            
+            # Classify based on complexity and composition - IMPROVED for real-world examples
+            # Special case: Very low complexity with minimal features = Plain (based on production blanks)
+            if (text_elements <= 3 and design_contours <= 2 and feature_count < 100 and complexity_score < 50):
+                return "Plain"
+            elif text_elements > 5:  # Increased threshold for text-heavy designs
+                if design_contours > 3:  # Increased threshold for better accuracy
+                    return "Text with Graphics"
+                else:
+                    return "Text Only"
+            elif design_contours > 8:  # Increased threshold for graphics-only
+                if text_elements > 3:  # Moderate text threshold
+                    return "Graphics with Text"
+                else:
+                    return "Graphics Only"
+            elif feature_count > 200:  # Increased threshold for complex designs
+                return "Complex Design"
+            elif complexity_score > 100:  # Increased threshold for moderate designs
+                return "Moderate Design"
+            elif complexity_score > 50:  # Increased threshold for simple designs
+                return "Simple Design"
+            else:
+                return "Plain"
+                
+        except Exception as e:
+            logger.error(f"Error classifying design type: {e}")
+            return "Unknown"
     
     def find_matching_order(self, detected_color, design_features):
-        """Find matching order based on color and design features"""
+        """Enhanced order matching using comprehensive design analysis"""
         try:
             if not self.pending_orders:
                 return None
@@ -207,10 +489,40 @@ class TShirtDetector:
                 elif detected_color == 'unknown':
                     score += 10  # Partial score for unknown colors
                 
-                # Design feature matching (simple heuristic)
+                # Enhanced design feature matching
+                if design_features['design_type'] != 'Plain':
+                    # Base score for having any design
+                    score += 20
+                    
+                    # Bonus for specific design types
+                    if design_features['design_type'] == 'Text Only':
+                        score += 15
+                    elif design_features['design_type'] == 'Graphics Only':
+                        score += 20
+                    elif design_features['design_type'] == 'Text with Graphics':
+                        score += 25
+                    elif design_features['design_type'] == 'Graphics with Text':
+                        score += 25
+                    elif design_features['design_type'] == 'Complex Design':
+                        score += 30
+                    
+                    # Complexity bonus
+                    if design_features['overall_complexity'] > 100:
+                        score += 15
+                    elif design_features['overall_complexity'] > 50:
+                        score += 10
+                    
+                    # Text element bonus
+                    if design_features['text_elements'] > 3:
+                        score += 10
+                    
+                    # Design contour bonus
+                    if design_features['design_contours'] > 5:
+                        score += 10
+                
+                # Legacy feature count support
                 if design_features['feature_count'] > 0:
-                    # More features = more complex design = higher score
-                    feature_score = min(design_features['feature_count'] / 100, 30)
+                    feature_score = min(design_features['feature_count'] / 100, 20)
                     score += feature_score
                 
                 if score > best_score:
@@ -218,7 +530,7 @@ class TShirtDetector:
                     best_match = order
             
             # Return match if score is above threshold
-            return best_match if best_score > 30 else None
+            return best_match if best_score > 25 else None
             
         except Exception as e:
             logger.error(f"Error in order matching: {e}")
@@ -240,12 +552,13 @@ class TShirtDetector:
                 # Find matching order
                 matching_order = self.find_matching_order(detected_color, design_features)
                 
-                # Draw results on frame
-                self.draw_detection_results(frame, t_shirt_mask, detected_color, matching_order)
+                # Draw results on frame with enhanced design information
+                self.draw_detection_results(frame, t_shirt_mask, detected_color, matching_order, design_features)
                 
                 # If we found a match, log it and potentially capture snapshot
                 if matching_order:
-                    logger.info(f"Potential match found: Order #{matching_order['orderNumber']} - {matching_order['color']} {matching_order['size']}")
+                    design_info = f"({design_features['design_type']}, {design_features['design_contours']} objects, {design_features['text_elements']} text)"
+                    logger.info(f"Potential match found: Order #{matching_order['orderNumber']} - {matching_order['color']} {matching_order['size']} - Design: {design_info}")
                     
                     # Add visual indicator for match
                     cv2.putText(frame, f"MATCH: Order #{matching_order['orderNumber']}", 
@@ -267,6 +580,8 @@ class TShirtDetector:
                         self.last_unmatched_snapshot_time = 0
                     
                     if current_time - self.last_unmatched_snapshot_time > 10:  # 10 second cooldown for unmatched
+                        design_info = f"({design_features['design_type']}, {design_features['design_contours']} objects, {design_features['text_elements']} text)"
+                        logger.info(f"No match found for {detected_color} t-shirt - Design: {design_info}")
                         self.capture_unmatched_snapshot(frame, detected_color, design_features)
                         self.last_unmatched_snapshot_time = current_time
                 
@@ -281,8 +596,8 @@ class TShirtDetector:
             logger.error(f"Error processing frame: {e}")
             return False, None, None
     
-    def draw_detection_results(self, frame, t_shirt_mask, detected_color, matching_order):
-        """Draw detection results on the frame"""
+    def draw_detection_results(self, frame, t_shirt_mask, detected_color, matching_order, design_features=None):
+        """Enhanced display of detection results with design information"""
         try:
             # Draw t-shirt mask outline
             contours, _ = cv2.findContours(t_shirt_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -295,6 +610,32 @@ class TShirtDetector:
             if detected_color:
                 cv2.putText(frame, f"Color: {detected_color}", (10, 90), 
                           cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
+            
+            # Draw enhanced design information
+            if design_features:
+                y_offset = 120
+                
+                # Design type
+                cv2.putText(frame, f"Design: {design_features.get('design_type', 'Unknown')}", 
+                          (10, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+                y_offset += 25
+                
+                # Complexity info
+                if design_features.get('design_contours', 0) > 0:
+                    cv2.putText(frame, f"Objects: {design_features['design_contours']}", 
+                              (10, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
+                    y_offset += 20
+                
+                if design_features.get('text_elements', 0) > 0:
+                    cv2.putText(frame, f"Text elements: {design_features['text_elements']}", 
+                              (10, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
+                    y_offset += 20
+                
+                # Overall complexity
+                complexity = design_features.get('overall_complexity', 0)
+                if complexity > 0:
+                    cv2.putText(frame, f"Complexity: {complexity:.1f}", 
+                              (10, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
             
             # Draw facility info
             cv2.putText(frame, f"Facility: {self.facility_id}", (10, frame.shape[0] - 20), 
