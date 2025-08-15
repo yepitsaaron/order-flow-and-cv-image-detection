@@ -1195,13 +1195,16 @@ app.post('/api/completion-photos', completionPhotoUpload.single('completionPhoto
       }
 
       // Get all order items assigned to this print facility for recognition
+      // Prioritize items that don't have completion photos yet
       const query = `
         SELECT oi.id as orderItemId, oi.designImage, oi.color, oi.size, oi.quantity, 
-               o.orderNumber, o.customerName, o.id as orderId
+               o.orderNumber, o.customerName, o.id as orderId,
+               CASE WHEN cp.id IS NULL THEN 0 ELSE 1 END as hasCompletionPhoto
         FROM order_items oi
         JOIN orders o ON oi.orderId = o.id
+        LEFT JOIN completion_photos cp ON oi.id = cp.orderItemId AND cp.status = 'matched'
         WHERE o.printFacilityId = ? AND o.status = 'printing' AND oi.completionStatus = 'pending'
-        ORDER BY o.assignedAt DESC
+        ORDER BY hasCompletionPhoto ASC, o.assignedAt DESC
       `;
 
       db.all(query, [printFacilityId], async (err, orderItems) => {
@@ -1351,18 +1354,49 @@ app.post('/api/completion-photos/:photoId/assign-order', (req, res) => {
         res.json({ 
           success: true,
           message: `Completion photo assigned to Order #${orderItem.orderNumber} - ${orderItem.color} ${orderItem.size}`,
-          assignedOrder: {
-            orderNumber: orderItem.orderNumber,
-            color: orderItem.color,
-            size: orderItem.size,
-            quantity: orderItem.quantity
-          }
+                      assignedOrder: {
+              orderNumber: orderItem.orderNumber,
+              color: orderItem.color,
+              size: orderItem.size,
+              quantity: orderItem.quantity
+            }
         });
       });
     });
 
   } catch (error) {
     console.error('Error assigning completion photo:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Get available order items for manual photo assignment
+app.get('/api/print-facilities/:facilityId/available-order-items', (req, res) => {
+  try {
+    const { facilityId } = req.params;
+    
+    // Get order items that don't have completion photos yet
+    const query = `
+      SELECT oi.id, oi.color, oi.size, oi.quantity, oi.designImage,
+             o.orderNumber, o.customerName
+      FROM order_items oi
+      JOIN orders o ON oi.orderId = o.id
+      LEFT JOIN completion_photos cp ON oi.id = cp.orderItemId AND cp.status = 'matched'
+      WHERE o.printFacilityId = ? AND o.status = 'printing' 
+        AND oi.completionStatus = 'pending' AND cp.id IS NULL
+      ORDER BY o.assignedAt DESC, oi.id
+    `;
+
+    db.all(query, [facilityId], (err, orderItems) => {
+      if (err) {
+        console.error('Error fetching available order items:', err);
+        return res.status(500).json({ error: 'Database error' });
+      }
+      res.json(orderItems);
+    });
+
+  } catch (error) {
+    console.error('Error fetching available order items:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

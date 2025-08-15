@@ -13,6 +13,10 @@ const PrintShopCompletion = ({ facilities }) => {
   const [pendingPhoto, setPendingPhoto] = useState(null);
   const [selectedMatchOrder, setSelectedMatchOrder] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showManualAssignment, setShowManualAssignment] = useState(false);
+  const [photoToAssign, setPhotoToAssign] = useState(null);
+  const [availableOrderItems, setAvailableOrderItems] = useState([]);
+  const [selectedOrderItem, setSelectedOrderItem] = useState('');
 
   const fetchFacilityData = useCallback(async () => {
     if (!selectedFacilityId) {
@@ -182,6 +186,50 @@ const PrintShopCompletion = ({ facilities }) => {
     } catch (error) {
       console.error('Error unmarking as completed:', error);
       setMessage('Failed to unmark as completed');
+    }
+  };
+
+  const handleManualAssignment = async (photo) => {
+    try {
+      setPhotoToAssign(photo);
+      setSelectedOrderItem('');
+      
+      // Fetch available order items for this facility
+      const response = await axios.get(`/api/print-facilities/${selectedFacilityId}/available-order-items`);
+      setAvailableOrderItems(response.data);
+      setShowManualAssignment(true);
+    } catch (error) {
+      console.error('Error fetching available order items:', error);
+      setMessage('Failed to load available order items');
+    }
+  };
+
+  const handleAssignPhoto = async () => {
+    if (!selectedOrderItem) {
+      setMessage('Please select an order item');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const response = await axios.post(`/api/completion-photos/${photoToAssign.id}/assign-order`, {
+        orderItemId: selectedOrderItem
+      });
+
+      if (response.data.success) {
+        setMessage('Photo assigned to order item successfully!');
+        setShowManualAssignment(false);
+        setPhotoToAssign(null);
+        setSelectedOrderItem('');
+        fetchFacilityData();
+      } else {
+        setMessage('Failed to assign photo to order item');
+      }
+    } catch (error) {
+      console.error('Error assigning photo:', error);
+      setMessage('Failed to assign photo to order item');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -406,6 +454,16 @@ const PrintShopCompletion = ({ facilities }) => {
                         Manually Mark Complete
                       </button>
                     )}
+
+                    {/* Manual Assignment for Unmatched Photos */}
+                    {photo.status === 'needs_review' && (
+                      <button
+                        className="btn btn-primary"
+                        onClick={() => handleManualAssignment(photo)}
+                      >
+                        Assign to Order Item
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -413,6 +471,52 @@ const PrintShopCompletion = ({ facilities }) => {
           </div>
         )}
       </div>
+
+      {/* Unmatched Photos Section */}
+      {selectedFacilityId && (
+        <div className="card">
+          <h4>Unmatched Photos</h4>
+          {(() => {
+            const unmatchedPhotos = completionPhotos.filter(photo => 
+              photo.status === 'needs_review' || photo.status === 'pending'
+            );
+            
+            if (unmatchedPhotos.length === 0) {
+              return <p>All photos have been matched to orders.</p>;
+            }
+
+            return (
+              <div className="unmatched-photos">
+                <p>These photos need manual assignment to order items:</p>
+                {unmatchedPhotos.map(photo => (
+                  <div key={photo.id} className="unmatched-photo-item">
+                    <div className="photo-preview">
+                      <img 
+                        src={`/completion-photos/${photo.photoPath}`} 
+                        alt="Unmatched photo" 
+                        className="small-photo"
+                      />
+                      <div className="photo-info">
+                        <p><strong>Uploaded:</strong> {new Date(photo.uploadedAt).toLocaleDateString()}</p>
+                        <p><strong>Status:</strong> {getStatusBadge(photo.status)}</p>
+                      </div>
+                    </div>
+                    
+                    <div className="assignment-section">
+                      <button
+                        className="btn btn-primary"
+                        onClick={() => handleManualAssignment(photo)}
+                      >
+                        Assign to Order Item
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
+        </div>
+      )}
 
       {/* Manual Order Selection Modal */}
       {showManualMatch && pendingPhoto && (
@@ -452,6 +556,62 @@ const PrintShopCompletion = ({ facilities }) => {
                   setPendingPhoto(null);
                   setSelectedMatchOrder('');
                   setMessage('Order assignment cancelled');
+                }}
+                disabled={loading}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Manual Photo Assignment Modal */}
+      {showManualAssignment && photoToAssign && (
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <h4>Assign Photo to Order Item</h4>
+            <p>Select which order item this completion photo belongs to:</p>
+            
+            <div className="photo-preview-modal">
+              <img 
+                src={`/completion-photos/${photoToAssign.photoPath}`} 
+                alt="Photo to assign" 
+                className="modal-photo"
+              />
+            </div>
+            
+            <div className="order-selection">
+              <label>Choose the order item:</label>
+              <select
+                value={selectedOrderItem}
+                onChange={(e) => setSelectedOrderItem(e.target.value)}
+                className="form-control"
+              >
+                <option value="">Select an order item...</option>
+                {availableOrderItems.map(item => (
+                  <option key={item.id} value={item.id}>
+                    Order #{item.orderNumber} - {item.color} {item.size} (Qty: {item.quantity})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="modal-actions">
+              <button
+                className="btn btn-primary"
+                onClick={handleAssignPhoto}
+                disabled={!selectedOrderItem || loading}
+              >
+                {loading ? 'Assigning...' : 'Assign Photo'}
+              </button>
+              <button
+                className="btn btn-secondary"
+                onClick={() => {
+                  setShowManualAssignment(false);
+                  setPhotoToAssign(null);
+                  setSelectedOrderItem('');
+                  setAvailableOrderItems([]);
                 }}
                 disabled={loading}
               >
