@@ -879,7 +879,8 @@ async function findBestImageMatch(completionPhotoPath, orderItems) {
     console.log(`Best match found: ${bestMatch ? `Order #${bestMatch.orderNumber} (${(bestMatch.confidence * 100).toFixed(1)}%)` : 'None'}`);
     
     // Return best match only if confidence is above threshold
-    return bestMatch && bestMatch.confidence > 0.6 ? bestMatch : null;
+    // Increased threshold to prevent false matches on new orders
+    return bestMatch && bestMatch.confidence > 0.8 ? bestMatch : null;
     
   } catch (error) {
     console.error('Error in findBestImageMatch:', error);
@@ -1181,17 +1182,18 @@ app.post('/api/completion-photos', completionPhotoUpload.single('completionPhoto
         return res.status(500).json({ error: 'Failed to store completion photo' });
       }
 
-      // Get all order items assigned to this print facility for recognition
-      // Prioritize items that don't have completion photos yet
+      // Get order items assigned to this print facility that don't have completion photos yet
       const query = `
         SELECT oi.id as orderItemId, oi.designImage, oi.color, oi.size, oi.quantity, 
-               o.orderNumber, o.customerName, o.id as orderId,
-               CASE WHEN cp.id IS NULL THEN 0 ELSE 1 END as hasCompletionPhoto
+               o.orderNumber, o.customerName, o.id as orderId
         FROM order_items oi
         JOIN orders o ON oi.orderId = o.id
         LEFT JOIN completion_photos cp ON oi.id = cp.orderItemId AND cp.status = 'matched'
-        WHERE o.printFacilityId = ? AND o.status = 'printing' AND oi.completionStatus = 'pending'
-        ORDER BY hasCompletionPhoto ASC, o.assignedAt DESC
+        WHERE o.printFacilityId = ? 
+          AND o.status = 'printing' 
+          AND oi.completionStatus = 'pending'
+          AND cp.id IS NULL
+        ORDER BY o.assignedAt DESC
       `;
 
       db.all(query, [printFacilityId], async (err, orderItems) => {
@@ -1209,6 +1211,12 @@ app.post('/api/completion-photos', completionPhotoUpload.single('completionPhoto
             message: 'Completion photo uploaded, but no pending orders found for this facility.' 
           });
         }
+
+        // Log what order items are being considered for matching
+        console.log(`Photo matching against ${orderItems.length} order items:`);
+        orderItems.forEach(item => {
+          console.log(`  - Order #${item.orderNumber}: ${item.color} ${item.size} (ID: ${item.orderItemId})`);
+        });
 
         // Attempt image recognition against all pending order items
         try {
