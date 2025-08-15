@@ -1282,7 +1282,8 @@ app.get('/api/print-facilities/:facilityId/completion-photos', (req, res) => {
     // 1. Already matched to orders assigned to this facility, OR
     // 2. Pending photos that were uploaded to this facility
     const query = `
-      SELECT cp.*, 
+      SELECT cp.id, cp.photoPath, cp.uploadedAt, cp.status, cp.confidenceScore,
+             cp.orderItemId, cp.matchedOrderItemId, cp.printFacilityId,
              COALESCE(oi.designImage, '') as designImage,
              COALESCE(oi.color, '') as color,
              COALESCE(oi.size, '') as size,
@@ -1290,7 +1291,6 @@ app.get('/api/print-facilities/:facilityId/completion-photos', (req, res) => {
              COALESCE(oi.completionStatus, 'pending') as completionStatus,
              COALESCE(o.orderNumber, '') as orderNumber,
              COALESCE(o.customerName, '') as customerName,
-             COALESCE(oi.id, 0) as orderItemId,
              COALESCE(oi.orderId, '') as orderId
       FROM completion_photos cp
       LEFT JOIN order_items oi ON cp.orderItemId = oi.id
