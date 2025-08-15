@@ -26,11 +26,18 @@ const PrintShopCompletion = ({ facilities }) => {
         axios.get(`/api/print-facilities/${selectedFacilityId}/orders`)
       ]);
       
-      setCompletionPhotos(photosResponse.data);
-      setFacilityOrders(ordersResponse.data);
+      // Ensure we have arrays and handle potential errors
+      const photos = Array.isArray(photosResponse.data) ? photosResponse.data : [];
+      const orders = Array.isArray(ordersResponse.data) ? ordersResponse.data : [];
+      
+      setCompletionPhotos(photos);
+      setFacilityOrders(orders);
     } catch (error) {
       console.error('Error fetching facility data:', error);
       setMessage('Error loading data for this facility');
+      // Set empty arrays on error to prevent map errors
+      setCompletionPhotos([]);
+      setFacilityOrders([]);
     }
   }, [selectedFacilityId]);
 
@@ -202,7 +209,7 @@ const PrintShopCompletion = ({ facilities }) => {
       {selectedFacilityId && (
         <div className="card">
           <h4>Orders Assigned to This Facility</h4>
-          {facilityOrders.length === 0 ? (
+          {!Array.isArray(facilityOrders) || facilityOrders.length === 0 ? (
             <p>No orders currently assigned to this facility.</p>
           ) : (
             <div className="facility-orders">
@@ -268,7 +275,7 @@ const PrintShopCompletion = ({ facilities }) => {
         <h4>Completion Photos</h4>
         {!selectedFacilityId ? (
           <p>Please select a facility to view completion photos.</p>
-        ) : completionPhotos.length === 0 ? (
+        ) : !Array.isArray(completionPhotos) || completionPhotos.length === 0 ? (
           <p>No completion photos uploaded yet for this facility.</p>
         ) : (
           <div className="completion-photos">
