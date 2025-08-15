@@ -234,6 +234,29 @@ const PrintShopCompletion = ({ facilities }) => {
     }
   };
 
+  const handleUnmatchPhoto = async (photoId) => {
+    if (!window.confirm('Are you sure you want to unmatch this completion photo? This will mark the order item as pending again.')) {
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const response = await axios.post(buildApiUrl(`/api/completion-photos/${photoId}/unmatch`));
+
+      if (response.data.success) {
+        setMessage('Completion photo unmatched successfully!');
+        fetchFacilityData();
+      } else {
+        setMessage('Failed to unmatch completion photo');
+      }
+    } catch (error) {
+      console.error('Error unmatching photo:', error);
+      setMessage('Failed to unmatch completion photo');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const getStatusBadge = (status) => {
     const statusClasses = {
       'pending': 'status-pending',
@@ -431,19 +454,37 @@ const PrintShopCompletion = ({ facilities }) => {
                       const isCompleted = orderItem && orderItem.completionStatus === 'completed';
                       
                       return isCompleted ? (
-                        <button
-                          className="btn btn-secondary"
-                          onClick={() => handleUnmarkCompleted(photo.orderItemId)}
-                        >
-                          Unmark as Completed
-                        </button>
+                        <div className="action-buttons">
+                          <button
+                            className="btn btn-secondary"
+                            onClick={() => handleUnmarkCompleted(photo.orderItemId)}
+                          >
+                            Unmark as Completed
+                          </button>
+                          <button
+                            className="btn btn-warning"
+                            onClick={() => handleUnmatchPhoto(photo.id)}
+                            title="Unmatch this photo from the order item"
+                          >
+                            Unmatch Photo
+                          </button>
+                        </div>
                       ) : (
-                        <button
-                          className="btn btn-success"
-                          onClick={() => handleMarkCompleted(photo.orderItemId, photo.id)}
-                        >
-                          Mark as Completed
-                        </button>
+                        <div className="action-buttons">
+                          <button
+                            className="btn btn-success"
+                            onClick={() => handleMarkCompleted(photo.orderItemId, photo.id)}
+                          >
+                            Mark as Completed
+                          </button>
+                          <button
+                            className="btn btn-warning"
+                            onClick={() => handleUnmatchPhoto(photo.id)}
+                            title="Unmatch this photo from the order item"
+                          >
+                            Unmatch Photo
+                          </button>
+                        </div>
                       );
                     })()}
                     

@@ -1458,6 +1458,114 @@ app.post('/api/order-items/:itemId/uncomplete', (req, res) => {
   }
 });
 
+// Unmatch a completion photo from its order item
+app.post('/api/completion-photos/:photoId/unmatch', (req, res) => {
+  try {
+    const { photoId } = req.params;
+
+    // First, get the current photo details to update the order item
+    db.get(`SELECT orderItemId, printFacilityId FROM completion_photos WHERE id = ?`, [photoId], (err, photo) => {
+      if (err) {
+        console.error('Error fetching completion photo:', err);
+        return res.status(500).json({ error: 'Database error' });
+      }
+      
+      if (!photo) {
+        return res.status(404).json({ error: 'Completion photo not found' });
+      }
+
+      if (!photo.orderItemId) {
+        return res.status(400).json({ error: 'Photo is not matched to any order item' });
+      }
+
+      // Start a transaction to ensure data consistency
+      db.serialize(() => {
+        // Begin transaction
+        db.run('BEGIN TRANSACTION');
+
+        // Update the completion photo to remove the match
+        db.run(`UPDATE completion_photos SET orderItemId = NULL, matchedOrderItemId = NULL, status = 'needs_review' WHERE id = ?`, 
+          [photoId], function(err) {
+          if (err) {
+            console.error('Error updating completion photo:', err);
+            db.run('ROLLBACK');
+            return res.status(500).json({ error: 'Failed to unmatch completion photo' });
+          }
+
+          // Update the order item to mark it as not completed
+          db.run(`UPDATE order_items SET completionStatus = 'pending', completedAt = NULL, completionPhoto = NULL WHERE id = ?`, 
+            [photo.orderItemId], function(err) {
+            if (err) {
+              console.error('Error updating order item:', err);
+              db.run('ROLLBACK');
+              return res.status(500).json({ error: 'Failed to update order item status' });
+            }
+
+            // Check if we need to update the order status
+            db.get(`SELECT o.id, o.orderNumber, COUNT(oi.id) as totalItems, 
+                           SUM(CASE WHEN oi.completionStatus = 'completed' THEN 1 ELSE 0 END) as completedItems
+                    FROM orders o
+                    JOIN order_items oi ON o.id = oi.orderId
+                    WHERE oi.id = ?
+                    GROUP BY o.id`, [photo.orderItemId], (err, orderSummary) => {
+              if (err) {
+                console.error('Error checking order completion status:', err);
+                db.run('ROLLBACK');
+                return res.status(500).json({ error: 'Failed to check order completion' });
+              }
+
+              if (orderSummary) {
+                const allCompleted = orderSummary.completedItems === 0; // Since we just uncompleted one
+                const newOrderStatus = allCompleted ? 'Printing' : 'Printing';
+
+                // Update order status
+                db.run(`UPDATE orders SET status = ? WHERE id = ?`, [newOrderStatus, orderSummary.id], function(err) {
+                  if (err) {
+                    console.error('Error updating order status:', err);
+                    // Don't rollback for this error, the main operation succeeded
+                  }
+
+                  // Commit transaction
+                  db.run('COMMIT', function(err) {
+                    if (err) {
+                      console.error('Error committing transaction:', err);
+                      return res.status(500).json({ error: 'Failed to commit changes' });
+                    }
+
+                    res.json({ 
+                      success: true,
+                      message: 'Completion photo unmatched successfully',
+                      orderStatus: newOrderStatus,
+                      orderNumber: orderSummary.orderNumber
+                    });
+                  });
+                });
+              } else {
+                // Commit transaction
+                db.run('COMMIT', function(err) {
+                  if (err) {
+                    console.error('Error committing transaction:', err);
+                    return res.status(500).json({ error: 'Failed to commit changes' });
+                  }
+
+                  res.json({ 
+                    success: true,
+                    message: 'Completion photo unmatched successfully'
+                  });
+                });
+              }
+            });
+          });
+        });
+      });
+    });
+
+  } catch (error) {
+    console.error('Error unmatching completion photo:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // Video detection snapshot - automatically mark t-shirt as printed
 app.post('/api/video-detection/snapshot', completionPhotoUpload.single('snapshot'), async (req, res) => {
   try {
