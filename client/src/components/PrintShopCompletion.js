@@ -324,11 +324,36 @@ const PrintShopCompletion = ({ facilities }) => {
                       .filter(item => item.orderId === order.id)
                       .map(item => (
                         <div key={item.id} className="order-item-detail">
-                          <div className="item-info">
-                            <span><strong>{item.color} {item.size}</strong> (Qty: {item.quantity})</span>
-                            <span className={`item-status ${item.completionStatus}`}>
-                              {item.completionStatus === 'completed' ? '✅ Completed' : '⏳ Pending'}
-                            </span>
+                          <div className="item-header">
+                            <div className="item-thumbnail">
+                              <img 
+                                src={`${buildApiUrl('/uploads')}/${item.designImage}`}
+                                alt={`${item.color} ${item.size} design`}
+                                className="design-thumbnail"
+                                onError={(e) => {
+                                  e.target.style.display = 'none';
+                                  e.target.nextSibling.style.display = 'block';
+                                }}
+                              />
+                              <div className="thumbnail-placeholder" style={{display: 'none'}}>
+                                <span>No Image</span>
+                              </div>
+                            </div>
+                            <div className="item-info">
+                              <div className="item-details">
+                                <span className="item-color-size"><strong>{item.color} {item.size}</strong></span>
+                                <span className="item-quantity">Qty: {item.quantity}</span>
+                                <span className="item-price">${item.price}</span>
+                              </div>
+                              <div className="item-status-container">
+                                <span className={`item-status ${item.completionStatus}`}>
+                                  {item.completionStatus === 'completed' ? '✅ Completed' : '⏳ Pending'}
+                                </span>
+                                {item.completionPhoto && (
+                                  <span className="completion-photo-indicator">📸 Photo uploaded</span>
+                                )}
+                              </div>
+                            </div>
                           </div>
                           <div className="item-actions">
                             {item.completionStatus !== 'completed' ? (
