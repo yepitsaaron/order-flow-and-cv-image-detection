@@ -1704,39 +1704,42 @@ app.post('/api/completion-photos', completionPhotoUpload.single('completionPhoto
 async function compareImagesDirectly(photo1Path, photo2Path) {
   try {
     const sharp = require('sharp');
-    const cv = require('opencv4nodejs');
     
     // Load and preprocess both images
     const image1 = await sharp(photo1Path)
-      .resize(300, 300)
+      .resize(100, 100) // Smaller size for faster processing
       .grayscale()
+      .raw()
       .toBuffer();
     
     const image2 = await sharp(photo2Path)
-      .resize(300, 300)
+      .resize(100, 100) // Same size for comparison
       .grayscale()
+      .raw()
       .toBuffer();
     
-    // Convert to OpenCV format
-    const mat1 = cv.imdecode(image1);
-    const mat2 = cv.imdecode(image2);
+    // Calculate pixel-by-pixel similarity
+    let totalPixels = image1.length;
+    let similarPixels = 0;
+    let totalDifference = 0;
     
-    // Extract SIFT features
-    const sift = new cv.SIFT();
-    const keypoints1 = sift.detect(mat1);
-    const keypoints2 = sift.detect(mat2);
+    for (let i = 0; i < image1.length; i++) {
+      const diff = Math.abs(image1[i] - image2[i]);
+      totalDifference += diff;
+      
+      // Consider pixels similar if difference is small (within 20 grayscale levels)
+      if (diff < 20) {
+        similarPixels++;
+      }
+    }
     
-    // Compute descriptors
-    const descriptors1 = sift.compute(mat1, keypoints1);
-    const descriptors2 = sift.compute(mat2, keypoints2);
+    // Calculate similarity score based on pixel similarity and average difference
+    const pixelSimilarity = similarPixels / totalPixels;
+    const averageDifference = totalDifference / totalPixels;
+    const differenceSimilarity = Math.max(0, 1 - (averageDifference / 255));
     
-    // Match features using FLANN matcher
-    const matcher = new cv.FlannBasedMatcher();
-    const matches = matcher.match(descriptors1, descriptors2);
-    
-    // Calculate similarity score based on good matches
-    const goodMatches = matches.filter(match => match.distance < 100);
-    const similarityScore = goodMatches.length / Math.max(keypoints1.length, keypoints2.length);
+    // Combine both metrics for final score
+    const similarityScore = (pixelSimilarity * 0.7) + (differenceSimilarity * 0.3);
     
     return Math.min(similarityScore, 1.0); // Normalize to 0-1 range
     

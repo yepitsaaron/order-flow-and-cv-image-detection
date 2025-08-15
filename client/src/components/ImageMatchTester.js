@@ -164,13 +164,14 @@ const ImageMatchTester = () => {
         <h4>How It Works</h4>
         <p>The image similarity algorithm:</p>
         <ol>
-          <li>Resizes both images to a standard size</li>
+          <li>Resizes both images to 100x100 pixels</li>
           <li>Converts them to grayscale</li>
-          <li>Extracts SIFT features from both images</li>
-          <li>Compares the feature descriptors</li>
-          <li>Calculates a similarity score from 0.0 to 1.0</li>
+          <li>Compares pixel-by-pixel differences</li>
+          <li>Calculates similarity based on pixel matches and average difference</li>
+          <li>Returns a similarity score from 0.0 to 1.0</li>
         </ol>
         <p><strong>Current threshold:</strong> 0.8 (80%) - photos must score 80% or higher to be considered a match.</p>
+        <p><strong>Note:</strong> This is a simplified algorithm for testing. The production system uses more sophisticated SIFT feature matching.</p>
       </div>
     </div>
   );
