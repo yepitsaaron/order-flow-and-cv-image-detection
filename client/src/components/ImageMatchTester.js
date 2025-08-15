@@ -171,7 +171,7 @@ const ImageMatchTester = () => {
           <li>Returns a similarity score from 0.0 to 1.0</li>
         </ol>
         <p><strong>Current threshold:</strong> 0.8 (80%) - photos must score 80% or higher to be considered a match.</p>
-        <p><strong>Note:</strong> Currently using pixel-based comparison. OpenCV.js integration is being debugged for future SIFT feature matching.</p>
+        <p><strong>Note:</strong> Now using Sharp-based pixel comparison for consistent, reliable image matching across the entire system.</p>
       </div>
     </div>
   );

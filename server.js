@@ -3,7 +3,6 @@ const multer = require('multer');
 const sqlite3 = require('sqlite3').verbose();
 const cors = require('cors');
 const PDFDocument = require('pdfkit');
-const cv = require('opencv.js');
 const fs = require('fs');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
@@ -134,13 +133,10 @@ const completionPhotoUpload = multer({
   }
 });
 
-// OpenCV helper functions to replace Sharp functionality
-async function resizeImageWithOpenCV(imagePath, size) {
+// Sharp helper functions for image processing
+async function resizeImageWithSharp(imagePath, size) {
   try {
-    // For now, use Sharp since OpenCV.js integration is being debugged
-    // This ensures consistent image processing across all functions
-    const sharp = require('sharp');
-    
+    // Use Sharp for consistent image processing across all functions
     const imageBuffer = await sharp(imagePath)
       .resize(size, size)
       .grayscale()
@@ -149,24 +145,23 @@ async function resizeImageWithOpenCV(imagePath, size) {
     
     return imageBuffer;
   } catch (error) {
-    console.error('Error in resizeImageWithOpenCV:', error);
+    console.error('Error in resizeImageWithSharp:', error);
     throw error;
   }
 }
 
 async function convertWebPToJPEG(imageBuffer) {
   try {
-    // For now, return the original buffer
-    // In a full OpenCV implementation, we would:
-    // 1. Decode WebP using cv.imdecode
-    // 2. Encode as JPEG using cv.imencode
-    // 3. Return the JPEG buffer
+    // Use Sharp for WebP to JPEG conversion
+    const jpegBuffer = await sharp(imageBuffer)
+      .jpeg({ quality: 90 })
+      .toBuffer();
     
-    // This is a placeholder - you may want to implement full OpenCV WebP conversion
-    return imageBuffer;
+    return jpegBuffer;
   } catch (error) {
     console.error('Error in convertWebPToJPEG:', error);
-    throw error;
+    // If conversion fails, return original buffer
+    return imageBuffer;
   }
 }
 
@@ -913,28 +908,29 @@ async function findBestImageMatch(completionPhotoPath, orderItems) {
     // Load completion photo
     const completionPhotoBuffer = fs.readFileSync(path.join(__dirname, 'completion-photos', completionPhotoPath));
     
-    // Convert completion photo to comparison format using OpenCV
+    // Convert completion photo to comparison format using Sharp
     const comparisonSize = 100; // Small size for faster processing
-    const completionPhotoResized = await resizeImageWithOpenCV(completionPhotoBuffer, comparisonSize);
+    
+    const completionPhotoResized = await resizeImageWithSharp(completionPhotoBuffer, comparisonSize);
     
     let bestMatch = null;
-    let bestScore = 0;
+    let bestSimilarity = 0;
     
-    // Compare against all pending order items
+    // Compare with each order item's design image
     for (const orderItem of orderItems) {
       try {
         const designImageBuffer = fs.readFileSync(path.join(__dirname, 'uploads', orderItem.designImage));
         
-        const designImageResized = await resizeImageWithOpenCV(designImageBuffer, comparisonSize);
+        const designImageResized = await resizeImageWithSharp(designImageBuffer, comparisonSize);
         
-        // Calculate similarity score using OpenCV SIFT features
+        // Calculate similarity score using Sharp-based processing
         const similarity = await calculateImageSimilarity(completionPhotoResized, designImageResized);
         
         console.log(`Order #${orderItem.orderNumber} - ${orderItem.color} ${orderItem.size}: ${(similarity * 100).toFixed(1)}%`);
         
         // Update best match if this score is higher
-        if (similarity > bestScore) {
-          bestScore = similarity;
+        if (similarity > bestSimilarity) {
+          bestSimilarity = similarity;
           bestMatch = {
             orderItemId: orderItem.orderItemId,
             orderNumber: orderItem.orderNumber,
@@ -974,8 +970,8 @@ async function performImageRecognition(completionPhotoPath, designImagePath, ord
     // Convert both images to the same format and size for comparison
     const comparisonSize = 100; // Small size for faster processing
     
-    const completionPhotoResized = await resizeImageWithOpenCV(completionPhotoBuffer, comparisonSize);
-    const designImageResized = await resizeImageWithOpenCV(designImageBuffer, comparisonSize);
+    const completionPhotoResized = await resizeImageWithSharp(completionPhotoBuffer, comparisonSize);
+    const designImageResized = await resizeImageWithSharp(designImageBuffer, comparisonSize);
     
     // Calculate basic image similarity (pixel-by-pixel comparison)
     const similarity = calculateImageSimilarity(completionPhotoResized, designImageResized);
@@ -1008,66 +1004,52 @@ async function performImageRecognition(completionPhotoPath, designImagePath, ord
   }
 }
 
-// Calculate image similarity using OpenCV SIFT features
+// Calculate image similarity using Sharp-based processing
 async function calculateImageSimilarity(image1Buffer, image2Buffer) {
   try {
-    const cv = require('opencv.js');
+    // Ensure we have valid buffers
+    if (!image1Buffer || !image2Buffer) {
+      console.warn('Invalid image buffers, falling back to pixel comparison');
+      return calculateImageSimilarityFallback(image1Buffer, image2Buffer);
+    }
     
-    // Convert Sharp buffers to OpenCV matrices
-    // Note: Sharp buffers are raw pixel data, we need to reshape them
-    const imageSize = 100; // 100x100 images
-    const totalPixels = imageSize * imageSize;
+    // For Sharp buffers, we expect raw pixel data
+    // The buffers should already be processed (resized, grayscale, raw)
+    const totalPixels = image1Buffer.length;
     
-    // Ensure we have the right amount of data
-    if (image1Buffer.length !== totalPixels || image2Buffer.length !== totalPixels) {
+    if (image1Buffer.length !== image2Buffer.length) {
       console.warn('Image buffer size mismatch, falling back to pixel comparison');
       return calculateImageSimilarityFallback(image1Buffer, image2Buffer);
     }
     
-    // Create OpenCV matrices from the raw pixel data
-    const mat1 = cv.matFromArray(imageSize, imageSize, cv.CV_8UC1, image1Buffer);
-    const mat2 = cv.matFromArray(imageSize, imageSize, cv.CV_8UC1, image2Buffer);
+    // Calculate pixel similarity using the processed buffers
+    let similarPixels = 0;
+    let totalDifference = 0;
     
-    // Extract SIFT features
-    const sift = new cv.SIFT();
-    const keypoints1 = sift.detect(mat1);
-    const keypoints2 = sift.detect(mat2);
-    
-    // If no features found, fall back to pixel comparison
-    if (keypoints1.length === 0 || keypoints2.length === 0) {
-      console.log('No SIFT features found, using pixel comparison');
-      mat1.delete();
-      mat2.delete();
-      keypoints1.delete();
-      keypoints2.delete();
-      return calculateImageSimilarityFallback(image1Buffer, image2Buffer);
+    for (let i = 0; i < totalPixels; i++) {
+      const diff = Math.abs(image1Buffer[i] - image2Buffer[i]);
+      totalDifference += diff;
+      
+      // Consider pixels similar if difference is small (within 30 grayscale levels)
+      if (diff < 30) {
+        similarPixels++;
+      }
     }
     
-    // Compute descriptors
-    const descriptors1 = sift.compute(mat1, keypoints1);
-    const descriptors2 = sift.compute(mat2, keypoints2);
+    // Calculate similarity score based on pixel similarity and average difference
+    const pixelSimilarity = similarPixels / totalPixels;
+    const averageDifference = totalDifference / totalPixels;
+    const differenceSimilarity = Math.max(0, 1 - (averageDifference / 255));
     
-    // Match features using FLANN matcher
-    const matcher = new cv.FlannBasedMatcher();
-    const matches = matcher.match(descriptors1, descriptors2);
+    // Combine both metrics for final score
+    const similarityScore = (pixelSimilarity * 0.7) + (differenceSimilarity * 0.3);
     
-    // Calculate similarity score based on good matches
-    const goodMatches = matches.filter(match => match.distance < 100);
-    const similarityScore = goodMatches.length / Math.max(keypoints1.length, keypoints2.length);
-    
-    // Clean up OpenCV objects
-    mat1.delete();
-    mat2.delete();
-    keypoints1.delete();
-    keypoints2.delete();
-    descriptors1.delete();
-    descriptors2.delete();
-    matches.delete();
+    console.log(`Sharp-based similarity calculation - Pixel similarity: ${(pixelSimilarity * 100).toFixed(2)}%, Average difference: ${averageDifference.toFixed(2)}`);
     
     return Math.min(similarityScore, 1.0); // Normalize to 0-1 range
     
   } catch (error) {
-    console.error('Error in OpenCV image similarity calculation:', error);
+    console.error('Error in Sharp image similarity calculation:', error);
     console.log('Falling back to pixel comparison');
     return calculateImageSimilarityFallback(image1Buffer, image2Buffer);
   }

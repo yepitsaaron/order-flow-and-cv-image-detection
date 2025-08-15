@@ -31,6 +31,15 @@ This directory contains comprehensive summaries of major changes, improvements, 
   - Updated resizeImageWithOpenCV helper for consistent processing
   - Image recognition accuracy restored to previous working levels
 
+### **OPENCV_TO_SHARP_MIGRATION_SUMMARY.md**
+- **Date**: August 15, 2024
+- **Focus**: Complete migration from OpenCV.js to Sharp for image processing
+- **Key Changes**:
+  - Converted all image processing functions from OpenCV.js to Sharp
+  - Eliminated OpenCV.js compatibility issues and API problems
+  - Unified image processing pipeline across entire JavaScript application
+  - Maintained Python stream detection OpenCV usage unchanged
+
 ### **REACT_IMPROVEMENTS_SUMMARY.md**
 - **Date**: August 15, 2024
 - **Focus**: Frontend React component improvements and enhancements
