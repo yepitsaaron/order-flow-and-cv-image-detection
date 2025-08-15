@@ -166,13 +166,12 @@ const ImageMatchTester = () => {
         <ol>
           <li>Resizes both images to 200x200 pixels</li>
           <li>Converts them to grayscale</li>
-          <li>Extracts SIFT features from both images</li>
-          <li>Compares feature descriptors using FLANN matcher</li>
-          <li>Calculates similarity score based on good feature matches</li>
+          <li>Compares pixel-by-pixel differences</li>
+          <li>Calculates similarity based on pixel matches and average difference</li>
           <li>Returns a similarity score from 0.0 to 1.0</li>
         </ol>
         <p><strong>Current threshold:</strong> 0.8 (80%) - photos must score 80% or higher to be considered a match.</p>
-        <p><strong>Note:</strong> This uses OpenCV.js with SIFT feature matching for accurate image comparison.</p>
+        <p><strong>Note:</strong> Currently using pixel-based comparison. OpenCV.js integration is being debugged for future SIFT feature matching.</p>
       </div>
     </div>
   );
