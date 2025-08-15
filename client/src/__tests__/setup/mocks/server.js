@@ -162,7 +162,7 @@ export const handlers = [
       success: true,
       snapshotId: Date.now(),
       message: 'Snapshot processed successfully',
-      orderStatus: 'Printing'
+      orderStatus: 'printing'
     }));
   }),
 

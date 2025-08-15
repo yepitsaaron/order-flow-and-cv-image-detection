@@ -8,6 +8,51 @@ const fs = require('fs');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 
+// ============================================================================
+// STATUS ENUMS - Centralized status management for consistency
+// ============================================================================
+
+// Order statuses - main order lifecycle
+const ORDER_STATUS = {
+  PENDING: 'pending',
+  PROCESSING: 'processing', 
+  PRINTING: 'printing',
+  ASSIGNED: 'assigned',
+  COMPLETED: 'completed',
+  SHIPPED: 'shipped',
+  CANCELLED: 'cancelled'
+};
+
+// Order item completion statuses
+const COMPLETION_STATUS = {
+  PENDING: 'pending',
+  COMPLETED: 'completed'
+};
+
+// Completion photo statuses
+const PHOTO_STATUS = {
+  PENDING: 'pending',
+  MATCHED: 'matched',
+  NEEDS_REVIEW: 'needs_review'
+};
+
+// Validation arrays for easy checking
+const VALID_ORDER_STATUSES = Object.values(ORDER_STATUS);
+const VALID_COMPLETION_STATUSES = Object.values(COMPLETION_STATUS);
+const VALID_PHOTO_STATUSES = Object.values(PHOTO_STATUS);
+
+// Helper function to validate status values
+function validateStatus(status, validStatuses, statusType) {
+  if (!validStatuses.includes(status)) {
+    throw new Error(`Invalid ${statusType} status: ${status}. Valid values: ${validStatuses.join(', ')}`);
+  }
+  return status;
+}
+
+// ============================================================================
+// END STATUS ENUMS
+// ============================================================================
+
 const app = express();
 const PORT = process.env.PORT || 3001;
 
@@ -143,7 +188,7 @@ db.serialize(() => {
     zipCode TEXT NOT NULL,
     country TEXT NOT NULL,
     totalAmount REAL NOT NULL,
-    status TEXT DEFAULT 'pending',
+    status TEXT DEFAULT '${ORDER_STATUS.PENDING}' CHECK (status IN ('${VALID_ORDER_STATUSES.join("', '")}')),
     printFacilityId TEXT,
     assignedAt DATETIME,
     createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -157,7 +202,7 @@ db.serialize(() => {
          size TEXT NOT NULL,
          quantity INTEGER NOT NULL,
          price REAL NOT NULL,
-         completionStatus TEXT DEFAULT 'pending',
+         completionStatus TEXT DEFAULT '${COMPLETION_STATUS.PENDING}' CHECK (completionStatus IN ('${VALID_COMPLETION_STATUSES.join("', '")}')),
          completionPhoto TEXT,
          completedAt DATETIME,
          FOREIGN KEY (orderId) REFERENCES orders (id)
@@ -187,7 +232,7 @@ db.serialize(() => {
          uploadedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
          matchedOrderItemId INTEGER,
          confidenceScore REAL,
-         status TEXT DEFAULT 'pending',
+         status TEXT DEFAULT '${PHOTO_STATUS.PENDING}' CHECK (status IN ('${VALID_PHOTO_STATUSES.join("', '")}')),
          FOREIGN KEY (orderItemId) REFERENCES order_items (id),
          FOREIGN KEY (matchedOrderItemId) REFERENCES order_items (id)
        )`);
@@ -580,16 +625,16 @@ app.get('/api/print-facilities/:facilityId/orders', (req, res) => {
     const query = `
       SELECT o.*, 
              COUNT(oi.id) as totalItems,
-             COUNT(CASE WHEN oi.completionStatus = 'completed' THEN 1 END) as completedItems,
-             COUNT(CASE WHEN oi.completionStatus = 'pending' THEN 1 END) as pendingItems
+             COUNT(CASE WHEN oi.completionStatus = ? THEN 1 END) as completedItems,
+             COUNT(CASE WHEN oi.completionStatus = ? THEN 1 END) as pendingItems
       FROM orders o
       LEFT JOIN order_items oi ON o.id = oi.orderId
-      WHERE o.printFacilityId = ? AND o.status IN ('printing', 'assigned')
+      WHERE o.printFacilityId = ? AND o.status IN (?, ?)
       GROUP BY o.id
       ORDER BY o.assignedAt DESC
     `;
 
-    db.all(query, [facilityId], (err, orders) => {
+    db.all(query, [facilityId, ORDER_STATUS.PRINTING, ORDER_STATUS.ASSIGNED, COMPLETION_STATUS.COMPLETED, COMPLETION_STATUS.PENDING], (err, orders) => {
       if (err) {
         console.error('Error fetching orders for facility:', err);
         return res.status(500).json({ error: 'Database error' });
@@ -612,11 +657,11 @@ app.get('/api/print-facilities/:facilityId/order-items', (req, res) => {
       SELECT oi.*, o.orderNumber, o.customerName, o.status as orderStatus
       FROM order_items oi
       JOIN orders o ON oi.orderId = o.id
-      WHERE o.printFacilityId = ? AND o.status IN ('printing', 'assigned')
+      WHERE o.printFacilityId = ? AND o.status IN (?, ?)
       ORDER BY o.assignedAt DESC, oi.id
     `;
 
-    db.all(query, [facilityId], (err, orderItems) => {
+    db.all(query, [facilityId, ORDER_STATUS.PRINTING, ORDER_STATUS.ASSIGNED], (err, orderItems) => {
       if (err) {
         console.error('Error fetching order items for facility:', err);
         return res.status(500).json({ error: 'Internal server error' });
@@ -651,8 +696,8 @@ app.post('/api/orders/:orderId/assign-facility', (req, res) => {
 
       // Update order with facility assignment and change status to "printing"
       db.run(
-        `UPDATE orders SET printFacilityId = ?, assignedAt = CURRENT_TIMESTAMP, status = 'printing' WHERE id = ?`,
-        [printFacilityId, orderId],
+        `UPDATE orders SET printFacilityId = ?, assignedAt = CURRENT_TIMESTAMP, status = ? WHERE id = ?`,
+                  [printFacilityId, ORDER_STATUS.PRINTING, orderId],
         function(err) {
           if (err) {
             console.error('Error assigning facility to order:', err);
@@ -777,7 +822,7 @@ app.put('/api/orders/:orderId/status', (req, res) => {
     const { status } = req.body;
 
     // Validate status
-    const validStatuses = ['processing', 'printing', 'completed', 'shipped', 'cancelled'];
+    const validStatuses = VALID_ORDER_STATUSES;
     if (!validStatuses.includes(status)) {
       return res.status(400).json({ error: 'Invalid status. Must be one of: ' + validStatuses.join(', ') });
     }
@@ -814,8 +859,8 @@ app.post('/api/orders/:orderId/unassign-facility', (req, res) => {
     const { orderId } = req.params;
 
     db.run(
-      `UPDATE orders SET printFacilityId = NULL, assignedAt = NULL, status = 'processing' WHERE id = ?`,
-      [orderId],
+      `UPDATE orders SET printFacilityId = NULL, assignedAt = NULL, status = ? WHERE id = ?`,
+              [ORDER_STATUS.PROCESSING, orderId],
       function(err) {
         if (err) {
           console.error('Error unassigning facility from order:', err);
@@ -941,7 +986,7 @@ async function performImageRecognition(completionPhotoPath, designImagePath, ord
     // Update completion photo with recognition results
     const confidenceScore = similarity;
     const matchedOrderItemId = similarity > 0.8 ? orderItemId : null; // 80% threshold for consistency
-    const status = similarity > 0.8 ? 'matched' : 'needs_review';
+    const status = similarity > 0.8 ? PHOTO_STATUS.MATCHED : PHOTO_STATUS.NEEDS_REVIEW;
     
     db.run(`UPDATE completion_photos SET matchedOrderItemId = ?, confidenceScore = ?, status = ? WHERE id = ?`, 
       [matchedOrderItemId, confidenceScore, status, photoId], (err) => {
@@ -956,7 +1001,7 @@ async function performImageRecognition(completionPhotoPath, designImagePath, ord
     console.error('Error in image recognition:', error);
     
     // Mark as needs review if recognition fails
-    db.run(`UPDATE completion_photos SET status = 'needs_review' WHERE id = ?`, [photoId], (err) => {
+    db.run(`UPDATE completion_photos SET status = ? WHERE id = ?`, [PHOTO_STATUS.NEEDS_REVIEW, photoId], (err) => {
       if (err) {
         console.error('Error updating completion photo status after recognition failure:', err);
       }
@@ -1253,7 +1298,7 @@ app.get('/api/print-facilities/:facilityId/completion-photos', (req, res) => {
              COALESCE(oi.color, '') as color,
              COALESCE(oi.size, '') as size,
              COALESCE(oi.quantity, 0) as quantity,
-             COALESCE(oi.completionStatus, 'pending') as completionStatus,
+             COALESCE(oi.completionStatus, ?) as completionStatus,
              COALESCE(o.orderNumber, '') as orderNumber,
              COALESCE(o.customerName, '') as customerName,
              COALESCE(oi.orderId, '') as orderId
@@ -1265,12 +1310,12 @@ app.get('/api/print-facilities/:facilityId/completion-photos', (req, res) => {
         (o.printFacilityId = ? AND cp.orderItemId IS NOT NULL)
         OR
         -- Pending photos that were uploaded to this facility
-        (cp.status IN ('pending', 'needs_review') AND cp.printFacilityId = ?)
+        (cp.status IN (?, ?) AND cp.printFacilityId = ?)
       )
       ORDER BY cp.uploadedAt DESC
     `;
 
-    db.all(query, [facilityId, facilityId], (err, photos) => {
+    db.all(query, [facilityId, PHOTO_STATUS.PENDING, PHOTO_STATUS.NEEDS_REVIEW, facilityId, COMPLETION_STATUS.PENDING], (err, photos) => {
       if (err) {
         console.error('Error fetching completion photos:', err);
         return res.status(500).json({ error: 'Database error' });
@@ -1306,8 +1351,8 @@ app.post('/api/completion-photos/:photoId/assign-order', (req, res) => {
       }
 
       // Update completion photo with the assigned order item
-      db.run(`UPDATE completion_photos SET orderItemId = ?, matchedOrderItemId = ?, status = 'matched', confidenceScore = 1.0 WHERE id = ?`, 
-        [orderItemId, orderItemId, photoId], function(err) {
+      db.run(`UPDATE completion_photos SET orderItemId = ?, matchedOrderItemId = ?, status = ?, confidenceScore = 1.0 WHERE id = ?`, 
+                  [orderItemId, orderItemId, PHOTO_STATUS.MATCHED, photoId], function(err) {
         if (err) {
           console.error('Error updating completion photo:', err);
           return res.status(500).json({ error: 'Failed to assign order' });
@@ -1343,13 +1388,13 @@ app.get('/api/print-facilities/:facilityId/available-order-items', (req, res) =>
              o.orderNumber, o.customerName
       FROM order_items oi
       JOIN orders o ON oi.orderId = o.id
-      LEFT JOIN completion_photos cp ON oi.id = cp.orderItemId AND cp.status = 'matched'
-      WHERE o.printFacilityId = ? AND o.status IN ('printing', 'assigned')
-        AND oi.completionStatus = 'pending' AND cp.id IS NULL
+              LEFT JOIN completion_photos cp ON oi.id = cp.orderItemId AND cp.status = ?
+      WHERE o.printFacilityId = ? AND o.status IN (?, ?)
+        AND oi.completionStatus = ? AND cp.id IS NULL
       ORDER BY o.assignedAt DESC, oi.id
     `;
 
-    db.all(query, [facilityId], (err, orderItems) => {
+    db.all(query, [PHOTO_STATUS.MATCHED, facilityId, ORDER_STATUS.PRINTING, ORDER_STATUS.ASSIGNED, COMPLETION_STATUS.PENDING], (err, orderItems) => {
       if (err) {
         console.error('Error fetching available order items:', err);
         return res.status(500).json({ error: 'Database error' });
@@ -1374,15 +1419,15 @@ app.post('/api/order-items/:itemId/complete', (req, res) => {
     }
 
     // Update order item completion status
-    db.run(`UPDATE order_items SET completionStatus = 'completed', completedAt = CURRENT_TIMESTAMP WHERE id = ?`, 
-      [itemId], function(err) {
+    db.run(`UPDATE order_items SET completionStatus = ?, completedAt = CURRENT_TIMESTAMP WHERE id = ?`, 
+      [COMPLETION_STATUS.COMPLETED, itemId], function(err) {
       if (err) {
         console.error('Error updating order item completion:', err);
         return res.status(500).json({ error: 'Failed to update completion status' });
       }
 
       // Update completion photo status
-      db.run(`UPDATE completion_photos SET status = 'matched' WHERE id = ?`, [completionPhotoId], (err) => {
+      db.run(`UPDATE completion_photos SET status = ? WHERE id = ?`, [PHOTO_STATUS.MATCHED, completionPhotoId], (err) => {
         if (err) {
           console.error('Error updating completion photo status:', err);
         }
@@ -1406,8 +1451,8 @@ app.post('/api/order-items/:itemId/uncomplete', (req, res) => {
     const { itemId } = req.params;
 
     // Update order item completion status back to pending
-    db.run(`UPDATE order_items SET completionStatus = 'pending', completedAt = NULL WHERE id = ?`, 
-      [itemId], function(err) {
+    db.run(`UPDATE order_items SET completionStatus = ?, completedAt = NULL WHERE id = ?`, 
+      [COMPLETION_STATUS.PENDING, itemId], function(err) {
       if (err) {
         console.error('Error updating order item completion:', err);
         return res.status(500).json({ error: 'Failed to update completion status' });
@@ -1452,8 +1497,8 @@ app.post('/api/completion-photos/:photoId/unmatch', (req, res) => {
         db.run('BEGIN TRANSACTION');
 
         // Update the completion photo to remove the match
-        db.run(`UPDATE completion_photos SET orderItemId = NULL, matchedOrderItemId = NULL, status = 'needs_review' WHERE id = ?`, 
-          [photoId], function(err) {
+        db.run(`UPDATE completion_photos SET orderItemId = NULL, matchedOrderItemId = NULL, status = ? WHERE id = ?`, 
+          [PHOTO_STATUS.NEEDS_REVIEW, photoId], function(err) {
           if (err) {
             console.error('Error updating completion photo:', err);
             db.run('ROLLBACK');
@@ -1461,8 +1506,8 @@ app.post('/api/completion-photos/:photoId/unmatch', (req, res) => {
           }
 
           // Update the order item to mark it as not completed
-          db.run(`UPDATE order_items SET completionStatus = 'pending', completedAt = NULL, completionPhoto = NULL WHERE id = ?`, 
-            [photo.orderItemId], function(err) {
+          db.run(`UPDATE order_items SET completionStatus = ?, completedAt = NULL, completionPhoto = NULL WHERE id = ?`, 
+            [COMPLETION_STATUS.PENDING, photo.orderItemId], function(err) {
             if (err) {
               console.error('Error updating order item:', err);
               db.run('ROLLBACK');
@@ -1471,11 +1516,11 @@ app.post('/api/completion-photos/:photoId/unmatch', (req, res) => {
 
             // Check if we need to update the order status
             db.get(`SELECT o.id, o.orderNumber, COUNT(oi.id) as totalItems, 
-                           SUM(CASE WHEN oi.completionStatus = 'completed' THEN 1 ELSE 0 END) as completedItems
+                           SUM(CASE WHEN oi.completionStatus = ? THEN 1 ELSE 0 END) as completedItems
                     FROM orders o
                     JOIN order_items oi ON o.id = oi.orderId
                     WHERE oi.id = ?
-                    GROUP BY o.id`, [photo.orderItemId], (err, orderSummary) => {
+                    GROUP BY o.id`, [COMPLETION_STATUS.COMPLETED, photo.orderItemId], (err, orderSummary) => {
               if (err) {
                 console.error('Error checking order completion status:', err);
                 db.run('ROLLBACK');
@@ -1484,7 +1529,7 @@ app.post('/api/completion-photos/:photoId/unmatch', (req, res) => {
 
               if (orderSummary) {
                 const allCompleted = orderSummary.completedItems === 0; // Since we just uncompleted one
-                const newOrderStatus = allCompleted ? 'Printing' : 'Printing';
+                const newOrderStatus = allCompleted ? ORDER_STATUS.PRINTING : ORDER_STATUS.PRINTING;
 
                 // Update order status
                 db.run(`UPDATE orders SET status = ? WHERE id = ?`, [newOrderStatus, orderSummary.id], function(err) {
@@ -1552,16 +1597,16 @@ app.post('/api/video-detection/snapshot', completionPhotoUpload.single('snapshot
     const snapshotPath = req.file.filename;
 
     // Store the snapshot with printFacilityId and proper linking
-    db.run(`INSERT INTO completion_photos (id, orderItemId, photoPath, status, confidenceScore, printFacilityId, matchedOrderItemId) VALUES (?, ?, ?, 'matched', ?, ?, ?)`, 
-      [snapshotId, orderItemId, snapshotPath, confidence || 1.0, printFacilityId, orderItemId], function(err) {
+    db.run(`INSERT INTO completion_photos (id, orderItemId, photoPath, status, confidenceScore, printFacilityId, matchedOrderItemId) VALUES (?, ?, ?, ?, ?, ?, ?)`, 
+      [snapshotId, orderItemId, snapshotPath, PHOTO_STATUS.MATCHED, confidence || 1.0, printFacilityId, orderItemId], function(err) {
       if (err) {
         console.error('Error storing snapshot:', err);
         return res.status(500).json({ error: 'Failed to store snapshot' });
       }
 
       // Update the order item to "completed" status (consistent with our new system)
-      db.run(`UPDATE order_items SET completionStatus = 'completed', completedAt = CURRENT_TIMESTAMP, completionPhoto = ? WHERE id = ?`, 
-        [snapshotPath, orderItemId], function(err) {
+      db.run(`UPDATE order_items SET completionStatus = ?, completedAt = CURRENT_TIMESTAMP, completionPhoto = ? WHERE id = ?`, 
+        [COMPLETION_STATUS.COMPLETED, snapshotPath, orderItemId], function(err) {
         if (err) {
           console.error('Error updating order item to completed:', err);
           return res.status(500).json({ error: 'Failed to update order item status' });
@@ -1569,11 +1614,11 @@ app.post('/api/video-detection/snapshot', completionPhotoUpload.single('snapshot
 
         // Check if all order items in this order are now completed
         db.get(`SELECT o.id, o.orderNumber, COUNT(oi.id) as totalItems, 
-                       SUM(CASE WHEN oi.completionStatus = 'completed' THEN 1 ELSE 0 END) as completedItems
+                       SUM(CASE WHEN oi.completionStatus = ? THEN 1 ELSE 0 END) as completedItems
                 FROM orders o
                 JOIN order_items oi ON o.id = oi.orderId
                 WHERE oi.id = ?
-                GROUP BY o.id`, [orderItemId], (err, orderSummary) => {
+                GROUP BY o.id`, [COMPLETION_STATUS.COMPLETED, orderItemId], (err, orderSummary) => {
           if (err) {
             console.error('Error checking order completion status:', err);
             return res.status(500).json({ error: 'Failed to check order completion' });
@@ -1581,7 +1626,7 @@ app.post('/api/video-detection/snapshot', completionPhotoUpload.single('snapshot
 
           if (orderSummary) {
             const allCompleted = orderSummary.totalItems === orderSummary.completedItems;
-            const newOrderStatus = allCompleted ? 'Completed' : 'Printing';
+            const newOrderStatus = allCompleted ? ORDER_STATUS.COMPLETED : ORDER_STATUS.PRINTING;
 
             // Update order status
             db.run(`UPDATE orders SET status = ? WHERE id = ?`, [newOrderStatus, orderSummary.id], function(err) {
@@ -1629,11 +1674,11 @@ app.get('/api/print-facilities/:facilityId/video-snapshots', (req, res) => {
       FROM completion_photos cp
       JOIN order_items oi ON cp.orderItemId = oi.id
       JOIN orders o ON oi.orderId = o.id
-      WHERE cp.printFacilityId = ? AND cp.status = 'matched'
+      WHERE cp.printFacilityId = ? AND cp.status = ?
       ORDER BY cp.uploadedAt DESC
     `;
 
-    db.all(query, [facilityId], (err, snapshots) => {
+    db.all(query, [facilityId, PHOTO_STATUS.MATCHED], (err, snapshots) => {
       if (err) {
         console.error('Error fetching video snapshots:', err);
         return res.status(500).json({ error: 'Database error' });
@@ -1686,8 +1731,8 @@ app.post('/api/completion-photos', completionPhotoUpload.single('completionPhoto
     const photoPath = req.file.filename;
 
     // Store completion photo record with temporary orderItemId (will be updated after recognition)
-    db.run(`INSERT INTO completion_photos (id, orderItemId, photoPath, status, printFacilityId) VALUES (?, ?, ?, 'pending', ?)`, 
-      [photoId, null, photoPath, printFacilityId], function(err) {
+    db.run(`INSERT INTO completion_photos (id, orderItemId, photoPath, status, printFacilityId) VALUES (?, ?, ?, ?, ?)`, 
+              [photoId, null, photoPath, PHOTO_STATUS.PENDING, printFacilityId], function(err) {
       if (err) {
         console.error('Error storing completion photo:', err);
         return res.status(500).json({ error: 'Failed to store completion photo' });
@@ -1699,15 +1744,15 @@ app.post('/api/completion-photos', completionPhotoUpload.single('completionPhoto
                o.orderNumber, o.customerName, o.id as orderId
         FROM order_items oi
         JOIN orders o ON oi.orderId = o.id
-        LEFT JOIN completion_photos cp ON oi.id = cp.orderItemId AND cp.status = 'matched'
+        LEFT JOIN completion_photos cp ON oi.id = cp.orderItemId AND cp.status = ?
         WHERE o.printFacilityId = ? 
-          AND o.status = 'printing' 
-          AND oi.completionStatus = 'pending'
+          AND o.status = ? 
+          AND oi.completionStatus = ?
           AND cp.id IS NULL
         ORDER BY o.assignedAt DESC
       `;
 
-      db.all(query, [printFacilityId], async (err, orderItems) => {
+      db.all(query, [PHOTO_STATUS.MATCHED, printFacilityId, ORDER_STATUS.PRINTING, COMPLETION_STATUS.PENDING], async (err, orderItems) => {
         if (err) {
           console.error('Error fetching order items for recognition:', err);
           return res.status(500).json({ error: 'Database error' });
@@ -1715,7 +1760,7 @@ app.post('/api/completion-photos', completionPhotoUpload.single('completionPhoto
 
         if (orderItems.length === 0) {
           // No pending orders found - save as unmatched photo
-          db.run(`UPDATE completion_photos SET status = 'needs_review' WHERE id = ?`, [photoId]);
+          db.run(`UPDATE completion_photos SET status = ? WHERE id = ?`, [PHOTO_STATUS.NEEDS_REVIEW, photoId]);
           return res.json({ 
             success: true, 
             photoId,
@@ -1738,7 +1783,7 @@ app.post('/api/completion-photos', completionPhotoUpload.single('completionPhoto
           if (bestMatch) {
             // Update completion photo with the best match
             db.run(`UPDATE completion_photos SET orderItemId = ?, matchedOrderItemId = ?, confidenceScore = ?, status = ? WHERE id = ?`, 
-              [bestMatch.orderItemId, bestMatch.orderItemId, bestMatch.confidence, 'matched', photoId], (err) => {
+              [bestMatch.orderItemId, bestMatch.orderItemId, bestMatch.confidence, PHOTO_STATUS.MATCHED, photoId], (err) => {
               if (err) {
                 console.error('Error updating completion photo with match:', err);
               }
@@ -1752,7 +1797,7 @@ app.post('/api/completion-photos', completionPhotoUpload.single('completionPhoto
             });
           } else {
             // No good match found - save as unmatched photo for later manual assignment
-            db.run(`UPDATE completion_photos SET status = 'needs_review' WHERE id = ?`, [photoId]);
+            db.run(`UPDATE completion_photos SET status = ? WHERE id = ?`, [PHOTO_STATUS.NEEDS_REVIEW, photoId]);
             res.json({ 
               success: true, 
               photoId,
@@ -1763,7 +1808,7 @@ app.post('/api/completion-photos', completionPhotoUpload.single('completionPhoto
           }
         } catch (recognitionError) {
           console.error('Image recognition error:', recognitionError);
-          db.run(`UPDATE completion_photos SET status = 'needs_review' WHERE id = ?`, [photoId]);
+          db.run(`UPDATE completion_photos SET status = ? WHERE id = ?`, [PHOTO_STATUS.NEEDS_REVIEW, photoId]);
           res.json({ 
             success: true, 
             photoId,
