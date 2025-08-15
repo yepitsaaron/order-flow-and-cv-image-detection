@@ -1287,7 +1287,7 @@ app.get('/api/print-facilities/:facilityId/completion-photos', (req, res) => {
              COALESCE(oi.color, '') as color,
              COALESCE(oi.size, '') as size,
              COALESCE(oi.quantity, 0) as quantity,
-             COALESCE(oi.completionStatus, '') as completionStatus,
+             COALESCE(oi.completionStatus, 'pending') as completionStatus,
              COALESCE(o.orderNumber, '') as orderNumber,
              COALESCE(o.customerName, '') as customerName,
              COALESCE(oi.id, 0) as orderItemId

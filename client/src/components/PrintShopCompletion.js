@@ -6,6 +6,7 @@ const PrintShopCompletion = ({ facilities }) => {
   const [selectedFacilityId, setSelectedFacilityId] = useState('');
   const [completionPhotos, setCompletionPhotos] = useState([]);
   const [facilityOrders, setFacilityOrders] = useState([]);
+  const [facilityOrderItems, setFacilityOrderItems] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState('');
   const [showManualMatch, setShowManualMatch] = useState(false);
@@ -17,27 +18,32 @@ const PrintShopCompletion = ({ facilities }) => {
     if (!selectedFacilityId) {
       setCompletionPhotos([]);
       setFacilityOrders([]);
+      setFacilityOrderItems([]);
       return;
     }
 
     try {
-      const [photosResponse, ordersResponse] = await Promise.all([
+      const [photosResponse, ordersResponse, orderItemsResponse] = await Promise.all([
         axios.get(`/api/print-facilities/${selectedFacilityId}/completion-photos`),
-        axios.get(`/api/print-facilities/${selectedFacilityId}/orders`)
+        axios.get(`/api/print-facilities/${selectedFacilityId}/orders`),
+        axios.get(`/api/print-facilities/${selectedFacilityId}/order-items`)
       ]);
       
       // Ensure we have arrays and handle potential errors
       const photos = Array.isArray(photosResponse.data) ? photosResponse.data : [];
       const orders = Array.isArray(ordersResponse.data) ? ordersResponse.data : [];
+      const orderItems = Array.isArray(orderItemsResponse.data) ? orderItemsResponse.data : [];
       
       setCompletionPhotos(photos);
       setFacilityOrders(orders);
+      setFacilityOrderItems(orderItems);
     } catch (error) {
       console.error('Error fetching facility data:', error);
       setMessage('Error loading data for this facility');
       // Set empty arrays on error to prevent map errors
       setCompletionPhotos([]);
       setFacilityOrders([]);
+      setFacilityOrderItems([]);
     }
   }, [selectedFacilityId]);
 
@@ -241,6 +247,41 @@ const PrintShopCompletion = ({ facilities }) => {
                     <p><strong>Completed:</strong> {order.completedItems}</p>
                     <p><strong>Pending:</strong> {order.pendingItems}</p>
                     <p><strong>Assigned:</strong> {new Date(order.assignedAt).toLocaleDateString()}</p>
+                  </div>
+                  
+                  {/* Individual Order Items */}
+                  <div className="order-items-list">
+                    <h6>Order Items:</h6>
+                    {Array.isArray(facilityOrderItems) && facilityOrderItems
+                      .filter(item => item.orderId === order.id)
+                      .map(item => (
+                        <div key={item.id} className="order-item-detail">
+                          <div className="item-info">
+                            <span><strong>{item.color} {item.size}</strong> (Qty: {item.quantity})</span>
+                            <span className={`item-status ${item.completionStatus}`}>
+                              {item.completionStatus === 'completed' ? '✅ Completed' : '⏳ Pending'}
+                            </span>
+                          </div>
+                          <div className="item-actions">
+                            {item.completionStatus !== 'completed' ? (
+                              <button
+                                className="btn btn-sm btn-success"
+                                onClick={() => handleMarkCompleted(item.id, null)}
+                                disabled={!item.completionPhoto}
+                              >
+                                Mark as Completed
+                              </button>
+                            ) : (
+                              <button
+                                className="btn btn-sm btn-secondary"
+                                onClick={() => handleUnmarkCompleted(item.id)}
+                              >
+                                Unmark as Completed
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
                   </div>
                 </div>
               ))}
