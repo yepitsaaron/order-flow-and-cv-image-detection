@@ -18,7 +18,12 @@
     "test:multi-item": "jest --testNamePattern='Multi-Item'",
     "test:images": "jest --testNamePattern='Image'",
     "test:pdf": "jest --testNamePattern='PDF'",
-    "test:all": "npm run test:backend && cd client && npm test"
+    "test:all": "npm run test:backend && cd client && npm test",
+    "test:frontend": "cd client && npm test",
+    "test:frontend:watch": "cd client && npm test -- --watch",
+    "test:frontend:coverage": "cd client && npm test -- --coverage",
+    "test:components": "cd client && npm test -- --testPathPattern=components",
+    "test:integration:frontend": "cd client && npm test -- --testPathPattern=integration"
   },
   "dependencies": {
     "axios": "^1.11.0",

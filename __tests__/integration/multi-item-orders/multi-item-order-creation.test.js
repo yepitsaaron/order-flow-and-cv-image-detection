@@ -13,7 +13,6 @@ jest.mock('sharp');
 
 describe('Multi-Item Order Creation Integration Tests', () => {
   let app;
-  let server;
   let testDb;
 
   beforeAll(async () => {
@@ -49,13 +48,14 @@ describe('Multi-Item Order Creation Integration Tests', () => {
     const serverModule = require('../../../server');
     app = serverModule;
     
-    // Start test server
-    server = app.listen(3002);
+    // For now, we'll test the app directly without starting a server
+    // The actual server.listen() is not needed for these tests
   });
 
   afterAll(async () => {
-    if (server) {
-      await new Promise((resolve) => server.close(resolve));
+    // Cleanup any test data
+    if (testDb) {
+      await testDb.cleanup();
     }
   });
 
