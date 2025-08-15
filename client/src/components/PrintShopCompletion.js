@@ -101,18 +101,14 @@ const PrintShopCompletion = ({ facilities }) => {
           setMessage(response.data.message);
           event.target.value = ''; // Clear file input
           fetchFacilityData(); // Refresh completion photos
-        } else if (response.data.orderItems && response.data.orderItems.length > 0) {
-          // Multiple potential matches found - show manual selection
-          setPendingPhoto({
-            photoId: response.data.photoId,
-            orderItems: response.data.orderItems,
-            message: response.data.message
-          });
-          setShowManualMatch(true);
-          setMessage('Multiple potential matches found. Please select the correct order.');
-        } else {
-          // No matches found
+        } else if (response.data.unmatched) {
+          // No match found - photo saved as unmatched for later manual assignment
           setMessage(response.data.message);
+          event.target.value = ''; // Clear file input
+          fetchFacilityData(); // Refresh completion photos to show the unmatched photo
+        } else {
+          // Fallback case
+          setMessage(response.data.message || 'Upload completed');
           event.target.value = ''; // Clear file input
           fetchFacilityData(); // Refresh completion photos
         }

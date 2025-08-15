@@ -1633,12 +1633,14 @@ app.post('/api/completion-photos', completionPhotoUpload.single('completionPhoto
         }
 
         if (orderItems.length === 0) {
-          // No pending orders found
-          db.run(`UPDATE completion_photos SET status = 'no_matches' WHERE id = ?`, [photoId]);
+          // No pending orders found - save as unmatched photo
+          db.run(`UPDATE completion_photos SET status = 'needs_review' WHERE id = ?`, [photoId]);
           return res.json({ 
             success: true, 
             photoId,
-            message: 'Completion photo uploaded, but no pending orders found for this facility.' 
+            message: 'Completion photo uploaded successfully as unmatched. No pending orders found for this facility.',
+            unmatched: true,
+            photoId: photoId
           });
         }
 
@@ -1668,18 +1670,14 @@ app.post('/api/completion-photos', completionPhotoUpload.single('completionPhoto
               match: bestMatch
             });
           } else {
-            // No good match found
+            // No good match found - save as unmatched photo for later manual assignment
             db.run(`UPDATE completion_photos SET status = 'needs_review' WHERE id = ?`, [photoId]);
             res.json({ 
               success: true, 
               photoId,
-              message: 'Completion photo uploaded, but no confident match found. Manual review required.',
-              orderItems: orderItems.map(item => ({
-                orderNumber: item.orderNumber,
-                color: item.color,
-                size: item.size,
-                quantity: item.quantity
-              }))
+              message: 'Completion photo uploaded successfully as unmatched. You can manually assign it to an order item later.',
+              unmatched: true,
+              photoId: photoId
             });
           }
         } catch (recognitionError) {
@@ -1688,7 +1686,9 @@ app.post('/api/completion-photos', completionPhotoUpload.single('completionPhoto
           res.json({ 
             success: true, 
             photoId,
-            message: 'Completion photo uploaded, but image recognition failed. Manual review required.' 
+            message: 'Completion photo uploaded successfully as unmatched. Image recognition failed, but you can manually assign it later.',
+            unmatched: true,
+            photoId: photoId
           });
         }
       });
