@@ -165,6 +165,11 @@ db.serialize(() => {
            console.error('Error adding confidenceScore column:', err);
          }
        });
+       db.run(`ALTER TABLE completion_photos ADD COLUMN printFacilityId TEXT`, (err) => {
+         if (err && !err.message.includes('duplicate column name')) {
+           console.error('Error adding printFacilityId column:', err);
+         }
+       });
 
   db.run(`CREATE TABLE IF NOT EXISTS print_facilities (
     id TEXT PRIMARY KEY,
@@ -1182,8 +1187,8 @@ app.post('/api/completion-photos', completionPhotoUpload.single('completionPhoto
     const photoPath = req.file.filename;
 
     // Store completion photo record with temporary orderItemId (will be updated after recognition)
-    db.run(`INSERT INTO completion_photos (id, orderItemId, photoPath, status) VALUES (?, ?, ?, 'pending')`, 
-      [photoId, null, photoPath], function(err) {
+    db.run(`INSERT INTO completion_photos (id, orderItemId, photoPath, status, printFacilityId) VALUES (?, ?, ?, 'pending', ?)`, 
+      [photoId, null, photoPath, printFacilityId], function(err) {
       if (err) {
         console.error('Error storing completion photo:', err);
         return res.status(500).json({ error: 'Failed to store completion photo' });
@@ -1273,7 +1278,9 @@ app.get('/api/print-facilities/:facilityId/completion-photos', (req, res) => {
     const { facilityId } = req.params;
 
     // Get all completion photos for orders assigned to this facility
-    // Use LEFT JOIN to include photos that don't have orderItemId yet
+    // Only show completion photos that are either:
+    // 1. Already matched to orders assigned to this facility, OR
+    // 2. Pending photos that were uploaded to this facility
     const query = `
       SELECT cp.*, 
              COALESCE(oi.designImage, '') as designImage,
@@ -1287,11 +1294,17 @@ app.get('/api/print-facilities/:facilityId/completion-photos', (req, res) => {
       FROM completion_photos cp
       LEFT JOIN order_items oi ON cp.orderItemId = oi.id
       LEFT JOIN orders o ON oi.orderId = o.id
-      WHERE (o.printFacilityId = ? OR cp.status IN ('pending', 'needs_review'))
+      WHERE (
+        -- Photos that are already matched to orders assigned to this facility
+        (o.printFacilityId = ? AND cp.orderItemId IS NOT NULL)
+        OR
+        -- Pending photos that were uploaded to this facility
+        (cp.status IN ('pending', 'needs_review') AND cp.printFacilityId = ?)
+      )
       ORDER BY cp.uploadedAt DESC
     `;
 
-    db.all(query, [facilityId], (err, photos) => {
+    db.all(query, [facilityId, facilityId], (err, photos) => {
       if (err) {
         console.error('Error fetching completion photos:', err);
         return res.status(500).json({ error: 'Database error' });
