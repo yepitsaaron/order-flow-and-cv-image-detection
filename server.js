@@ -1765,8 +1765,8 @@ app.post('/api/test-image-similarity', completionPhotoUpload.fields([
       return res.status(400).json({ error: 'Both photos are required' });
     }
 
-    const photo1Path = req.files.photo1[0].filename;
-    const photo2Path = req.files.photo2[0].filename;
+    const photo1Path = req.files.photo1[0].path; // Use full path instead of just filename
+    const photo2Path = req.files.photo2[0].path; // Use full path instead of just filename
 
     // Create a mock order item for the second photo to test against
     const mockOrderItem = {
