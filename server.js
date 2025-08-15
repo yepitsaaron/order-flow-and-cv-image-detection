@@ -16,9 +16,9 @@ const sharp = require('sharp');
 const ORDER_STATUS = {
   PENDING: 'pending',
   PROCESSING: 'processing', 
-  PRINTING: 'printing',
   ASSIGNED: 'assigned',
-  COMPLETED: 'completed',
+  PRINTING: 'printing',
+  COMPLETED: 'print_completed',
   SHIPPED: 'shipped',
   CANCELLED: 'cancelled'
 };
@@ -1339,15 +1339,64 @@ app.post('/api/completion-photos/:photoId/assign-order', (req, res) => {
           return res.status(500).json({ error: 'Failed to assign order' });
         }
 
-        res.json({ 
-          success: true,
-          message: `Completion photo assigned to Order #${orderItem.orderNumber} - ${orderItem.color} ${orderItem.size}`,
-                      assignedOrder: {
-              orderNumber: orderItem.orderNumber,
-              color: orderItem.color,
-              size: orderItem.size,
-              quantity: orderItem.quantity
+        // Update the order item to "completed" status
+        db.run(`UPDATE order_items SET completionStatus = ?, completedAt = CURRENT_TIMESTAMP WHERE id = ?`, 
+          [COMPLETION_STATUS.COMPLETED, orderItemId], function(err) {
+          if (err) {
+            console.error('Error updating order item to completed:', err);
+            return res.status(500).json({ error: 'Failed to update order item status' });
+          }
+
+          // Check if all order items in this order are now completed
+          db.get(`SELECT o.id, o.orderNumber, COUNT(oi.id) as totalItems, 
+                         SUM(CASE WHEN oi.completionStatus = ? THEN 1 ELSE 0 END) as completedItems
+                  FROM orders o
+                  JOIN order_items oi ON o.id = oi.orderId
+                  WHERE oi.id = ?
+                  GROUP BY o.id`, [COMPLETION_STATUS.COMPLETED, orderItemId], (err, orderSummary) => {
+            if (err) {
+              console.error('Error checking order completion status:', err);
+              return res.status(500).json({ error: 'Failed to check order completion' });
             }
+
+            if (orderSummary) {
+              const allCompleted = orderSummary.totalItems === orderSummary.completedItems;
+              const newOrderStatus = allCompleted ? ORDER_STATUS.COMPLETED : ORDER_STATUS.PRINTING;
+
+              // Update order status
+              db.run(`UPDATE orders SET status = ? WHERE id = ?`, [newOrderStatus, orderSummary.id], function(err) {
+                if (err) {
+                  console.error('Error updating order status:', err);
+                }
+
+                res.json({ 
+                  success: true,
+                  message: `Completion photo assigned to Order #${orderItem.orderNumber} - ${orderItem.color} ${orderItem.size}. Order status: ${newOrderStatus}`,
+                  assignedOrder: {
+                    orderNumber: orderItem.orderNumber,
+                    color: orderItem.color,
+                    size: orderItem.size,
+                    quantity: orderItem.quantity
+                  },
+                  orderStatus: newOrderStatus,
+                  completedItems: orderSummary.completedItems,
+                  totalItems: orderSummary.totalItems,
+                  allCompleted: allCompleted
+                });
+              });
+            } else {
+              res.json({ 
+                success: true,
+                message: `Completion photo assigned to Order #${orderItem.orderNumber} - ${orderItem.color} ${orderItem.size}`,
+                assignedOrder: {
+                  orderNumber: orderItem.orderNumber,
+                  color: orderItem.color,
+                  size: orderItem.size,
+                  quantity: orderItem.quantity
+                }
+              });
+            }
+          });
         });
       });
     });
@@ -1767,14 +1816,61 @@ app.post('/api/completion-photos', completionPhotoUpload.single('completionPhoto
               [bestMatch.orderItemId, bestMatch.orderItemId, bestMatch.confidence, PHOTO_STATUS.MATCHED, photoId], (err) => {
               if (err) {
                 console.error('Error updating completion photo with match:', err);
+                return res.status(500).json({ error: 'Failed to update completion photo with match' });
               }
-            });
 
-            res.json({ 
-              success: true, 
-              photoId,
-              message: `Completion photo matched to Order #${bestMatch.orderNumber} - ${bestMatch.color} ${bestMatch.size} (Confidence: ${(bestMatch.confidence * 100).toFixed(1)}%)`,
-              match: bestMatch
+              // Update the order item to "completed" status
+              db.run(`UPDATE order_items SET completionStatus = ?, completedAt = CURRENT_TIMESTAMP WHERE id = ?`, 
+                [COMPLETION_STATUS.COMPLETED, bestMatch.orderItemId], function(err) {
+                if (err) {
+                  console.error('Error updating order item to completed:', err);
+                  return res.status(500).json({ error: 'Failed to update order item status' });
+                }
+
+                // Check if all order items in this order are now completed
+                db.get(`SELECT o.id, o.orderNumber, COUNT(oi.id) as totalItems, 
+                               SUM(CASE WHEN oi.completionStatus = ? THEN 1 ELSE 0 END) as completedItems
+                        FROM orders o
+                        JOIN order_items oi ON o.id = oi.orderId
+                        WHERE oi.id = ?
+                        GROUP BY o.id`, [COMPLETION_STATUS.COMPLETED, bestMatch.orderItemId], (err, orderSummary) => {
+                  if (err) {
+                    console.error('Error checking order completion status:', err);
+                    return res.status(500).json({ error: 'Failed to check order completion' });
+                  }
+
+                  if (orderSummary) {
+                    const allCompleted = orderSummary.totalItems === orderSummary.completedItems;
+                    const newOrderStatus = allCompleted ? ORDER_STATUS.COMPLETED : ORDER_STATUS.PRINTING;
+
+                    // Update order status
+                    db.run(`UPDATE orders SET status = ? WHERE id = ?`, [newOrderStatus, orderSummary.id], function(err) {
+                      if (err) {
+                        console.error('Error updating order status:', err);
+                      }
+
+                      res.json({ 
+                        success: true, 
+                        photoId,
+                        message: `Completion photo matched to Order #${bestMatch.orderNumber} - ${bestMatch.color} ${bestMatch.size} (Confidence: ${(bestMatch.confidence * 100).toFixed(1)}%). Order status: ${newOrderStatus}`,
+                        match: bestMatch,
+                        orderStatus: newOrderStatus,
+                        orderNumber: orderSummary.orderNumber,
+                        completedItems: orderSummary.completedItems,
+                        totalItems: orderSummary.totalItems,
+                        allCompleted: allCompleted
+                      });
+                    });
+                  } else {
+                    res.json({ 
+                      success: true, 
+                      photoId,
+                      message: `Completion photo matched to Order #${bestMatch.orderNumber} - ${bestMatch.color} ${bestMatch.size} (Confidence: ${(bestMatch.confidence * 100).toFixed(1)}%)`,
+                      match: bestMatch
+                    });
+                  }
+                });
+              });
             });
           } else {
             // No good match found - save as unmatched photo for later manual assignment
