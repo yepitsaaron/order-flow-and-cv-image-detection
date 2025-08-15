@@ -440,6 +440,64 @@ app.get('/api/print-facilities', (req, res) => {
   });
 });
 
+// Get orders assigned to a specific print facility
+app.get('/api/print-facilities/:facilityId/orders', (req, res) => {
+  try {
+    const { facilityId } = req.params;
+    
+    const query = `
+      SELECT o.*, 
+             COUNT(oi.id) as totalItems,
+             COUNT(CASE WHEN oi.completionStatus = 'completed' THEN 1 END) as completedItems,
+             COUNT(CASE WHEN oi.completionStatus = 'pending' THEN 1 END) as pendingItems
+      FROM orders o
+      LEFT JOIN order_items oi ON o.id = oi.orderId
+      WHERE o.printFacilityId = ? AND o.status IN ('printing', 'assigned')
+      GROUP BY o.id
+      ORDER BY o.assignedAt DESC
+    `;
+
+    db.all(query, [facilityId], (err, orders) => {
+      if (err) {
+        console.error('Error fetching orders for facility:', err);
+        return res.status(500).json({ error: 'Database error' });
+      }
+      res.json(orders);
+    });
+
+  } catch (error) {
+    console.error('Error fetching orders for facility:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Get order items assigned to a specific print facility
+app.get('/api/print-facilities/:facilityId/order-items', (req, res) => {
+  try {
+    const { facilityId } = req.params;
+    
+    const query = `
+      SELECT oi.*, o.orderNumber, o.customerName, o.status as orderStatus
+      FROM order_items oi
+      JOIN orders o ON oi.orderId = o.id
+      WHERE o.printFacilityId = ? AND o.status IN ('printing', 'assigned') AND oi.completionStatus = 'pending'
+      ORDER BY o.assignedAt DESC, oi.id
+    `;
+
+    db.all(query, [facilityId], (err, orderItems) => {
+      if (err) {
+        console.error('Error fetching order items for facility:', err);
+        return res.status(500).json({ error: 'Database error' });
+      }
+      res.json(orderItems);
+    });
+
+  } catch (error) {
+    console.error('Error fetching order items for facility:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // Get print facility by ID
 app.get('/api/print-facilities/:facilityId', (req, res) => {
   const { facilityId } = req.params;

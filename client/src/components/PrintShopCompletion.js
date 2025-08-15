@@ -5,6 +5,7 @@ import './PrintShopCompletion.css';
 const PrintShopCompletion = ({ facilities }) => {
   const [selectedFacilityId, setSelectedFacilityId] = useState('');
   const [completionPhotos, setCompletionPhotos] = useState([]);
+  const [facilityOrders, setFacilityOrders] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState('');
   const [showManualMatch, setShowManualMatch] = useState(false);
@@ -12,28 +13,35 @@ const PrintShopCompletion = ({ facilities }) => {
   const [selectedMatchOrder, setSelectedMatchOrder] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const fetchCompletionPhotos = useCallback(async () => {
+  const fetchFacilityData = useCallback(async () => {
     if (!selectedFacilityId) {
       setCompletionPhotos([]);
+      setFacilityOrders([]);
       return;
     }
 
     try {
-      const response = await axios.get(`/api/print-facilities/${selectedFacilityId}/completion-photos`);
-      setCompletionPhotos(response.data);
+      const [photosResponse, ordersResponse] = await Promise.all([
+        axios.get(`/api/print-facilities/${selectedFacilityId}/completion-photos`),
+        axios.get(`/api/print-facilities/${selectedFacilityId}/orders`)
+      ]);
+      
+      setCompletionPhotos(photosResponse.data);
+      setFacilityOrders(ordersResponse.data);
     } catch (error) {
-      console.error('Error fetching completion photos:', error);
-      setMessage('Error loading completion photos for this facility');
+      console.error('Error fetching facility data:', error);
+      setMessage('Error loading data for this facility');
     }
   }, [selectedFacilityId]);
 
   useEffect(() => {
     if (selectedFacilityId) {
-      fetchCompletionPhotos();
+      fetchFacilityData();
     } else {
       setCompletionPhotos([]);
+      setFacilityOrders([]);
     }
-  }, [selectedFacilityId, fetchCompletionPhotos]);
+  }, [selectedFacilityId, fetchFacilityData]);
 
   const handleFacilityChange = (facilityId) => {
     setSelectedFacilityId(facilityId);
@@ -74,7 +82,7 @@ const PrintShopCompletion = ({ facilities }) => {
           // Perfect match found - show success message
           setMessage(response.data.message);
           event.target.value = ''; // Clear file input
-          fetchCompletionPhotos(); // Refresh completion photos
+          fetchFacilityData(); // Refresh completion photos
         } else if (response.data.orderItems && response.data.orderItems.length > 0) {
           // Multiple potential matches found - show manual selection
           setPendingPhoto({
@@ -88,7 +96,7 @@ const PrintShopCompletion = ({ facilities }) => {
           // No matches found
           setMessage(response.data.message);
           event.target.value = ''; // Clear file input
-          fetchCompletionPhotos(); // Refresh completion photos
+          fetchFacilityData(); // Refresh completion photos
         }
       } else {
         setMessage('Upload failed');
@@ -118,7 +126,7 @@ const PrintShopCompletion = ({ facilities }) => {
         setShowManualMatch(false);
         setPendingPhoto(null);
         setSelectedMatchOrder('');
-        fetchCompletionPhotos(); // Refresh completion photos
+        fetchFacilityData(); // Refresh completion photos
       } else {
         setMessage('Failed to assign order');
       }
@@ -138,7 +146,7 @@ const PrintShopCompletion = ({ facilities }) => {
 
       if (response.data.success) {
         setMessage('Order item marked as completed successfully');
-        fetchCompletionPhotos();
+        fetchFacilityData();
       } else {
         setMessage('Failed to mark as completed');
       }
@@ -189,6 +197,34 @@ const PrintShopCompletion = ({ facilities }) => {
           </select>
         </div>
       </div>
+
+      {/* Facility Orders Section */}
+      {selectedFacilityId && (
+        <div className="card">
+          <h4>Orders Assigned to This Facility</h4>
+          {facilityOrders.length === 0 ? (
+            <p>No orders currently assigned to this facility.</p>
+          ) : (
+            <div className="facility-orders">
+              {facilityOrders.map(order => (
+                <div key={order.id} className="facility-order-item">
+                  <div className="order-header">
+                    <h5>Order #{order.orderNumber}</h5>
+                    <span className="order-status">{order.status}</span>
+                  </div>
+                  <div className="order-details">
+                    <p><strong>Customer:</strong> {order.customerName}</p>
+                    <p><strong>Total Items:</strong> {order.totalItems}</p>
+                    <p><strong>Completed:</strong> {order.completedItems}</p>
+                    <p><strong>Pending:</strong> {order.pendingItems}</p>
+                    <p><strong>Assigned:</strong> {new Date(order.assignedAt).toLocaleDateString()}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Upload Section */}
       <div className={`card ${!selectedFacilityId ? 'disabled' : ''}`}>

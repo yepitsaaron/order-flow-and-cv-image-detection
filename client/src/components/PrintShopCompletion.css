@@ -124,6 +124,55 @@
   border-radius: 6px;
 }
 
+.facility-orders {
+  display: grid;
+  gap: 1rem;
+}
+
+.facility-order-item {
+  background: #f8f9fa;
+  border: 1px solid #e1e5e9;
+  border-radius: 6px;
+  padding: 1rem;
+}
+
+.order-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+.order-header h5 {
+  margin: 0;
+  color: #333;
+}
+
+.order-status {
+  background: #667eea;
+  color: white;
+  padding: 0.25rem 0.75rem;
+  border-radius: 20px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-transform: capitalize;
+}
+
+.order-details {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0.5rem;
+}
+
+.order-details p {
+  margin: 0;
+  color: #666;
+}
+
+.order-details strong {
+  color: #333;
+}
+
 .uploading {
   color: #667eea;
   font-style: italic;
