@@ -1,0 +1,35 @@
+.tshirt-designer {
+  max-width: 100%;
+}
+
+.tshirt-designer h2 {
+  color: #333;
+  margin-bottom: 1rem;
+  font-size: 1.5rem;
+}
+
+.tshirt-designer p {
+  color: #666;
+  margin-bottom: 1rem;
+  line-height: 1.5;
+}
+
+.file-hint {
+  font-size: 0.9rem;
+  color: #999;
+  margin-top: 0.5rem;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: 600;
+  color: #555;
+}
+
+.form-group label:last-child {
+  margin-top: 0.5rem;
+  font-weight: normal;
+  color: #667eea;
+  font-size: 1.1rem;
+} 
