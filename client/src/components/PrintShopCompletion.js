@@ -252,6 +252,18 @@ const PrintShopCompletion = ({ facilities }) => {
                   {/* Individual Order Items */}
                   <div className="order-items-list">
                     <h6>Order Items:</h6>
+                    {/* Debug info for order items */}
+                    <div style={{ background: '#e8f4fd', padding: '8px', marginBottom: '10px', borderRadius: '4px', fontSize: '11px' }}>
+                      <p><strong>Debug - Order Items for Order {order.id}:</strong></p>
+                      {Array.isArray(facilityOrderItems) && facilityOrderItems
+                        .filter(item => item.orderId === order.id)
+                        .map((item, index) => (
+                          <div key={index} style={{ margin: '2px 0' }}>
+                            Item {index + 1}: ID={item.id}, Color={item.color}, Size={item.size}, Status={item.completionStatus}
+                          </div>
+                        ))}
+                    </div>
+                    
                     {Array.isArray(facilityOrderItems) && facilityOrderItems
                       .filter(item => item.orderId === order.id)
                       .map(item => (
@@ -336,6 +348,17 @@ const PrintShopCompletion = ({ facilities }) => {
           <p>No completion photos uploaded yet for this facility.</p>
         ) : (
           <div className="completion-photos">
+            {/* Debug info for completion photos */}
+            <div style={{ background: '#f0f0f0', padding: '10px', marginBottom: '15px', borderRadius: '5px', fontSize: '12px' }}>
+              <p><strong>Debug - Completion Photos:</strong> {completionPhotos.length} photos found</p>
+              {completionPhotos.map((photo, index) => (
+                <div key={index} style={{ margin: '5px 0' }}>
+                  Photo {index + 1}: ID={photo.id}, OrderItemID={photo.orderItemId}, 
+                  Color={photo.color}, Size={photo.size}, Status={photo.status}
+                </div>
+              ))}
+            </div>
+            
             {completionPhotos.map(photo => (
               <div key={photo.id} className="completion-photo-item">
                 <div className="photo-comparison">

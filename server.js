@@ -1290,7 +1290,8 @@ app.get('/api/print-facilities/:facilityId/completion-photos', (req, res) => {
              COALESCE(oi.completionStatus, 'pending') as completionStatus,
              COALESCE(o.orderNumber, '') as orderNumber,
              COALESCE(o.customerName, '') as customerName,
-             COALESCE(oi.id, 0) as orderItemId
+             COALESCE(oi.id, 0) as orderItemId,
+             COALESCE(oi.orderId, '') as orderId
       FROM completion_photos cp
       LEFT JOIN order_items oi ON cp.orderItemId = oi.id
       LEFT JOIN orders o ON oi.orderId = o.id
