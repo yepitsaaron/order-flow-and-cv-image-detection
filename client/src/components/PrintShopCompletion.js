@@ -376,23 +376,27 @@ const PrintShopCompletion = ({ facilities }) => {
                   </div>
 
                   <div className="photo-actions">
-                    {photo.status === 'matched' && photo.completionStatus !== 'completed' && (
-                      <button
-                        className="btn btn-success"
-                        onClick={() => handleMarkCompleted(photo.orderItemId, photo.id)}
-                      >
-                        Mark as Completed
-                      </button>
-                    )}
-                    
-                    {photo.status === 'matched' && photo.completionStatus === 'completed' && (
-                      <button
-                        className="btn btn-secondary"
-                        onClick={() => handleUnmarkCompleted(photo.orderItemId)}
-                      >
-                        Unmark as Completed
-                      </button>
-                    )}
+                    {photo.status === 'matched' && photo.orderItemId && (() => {
+                      // Find the corresponding order item to get its current completion status
+                      const orderItem = facilityOrderItems.find(item => item.id === photo.orderItemId);
+                      const isCompleted = orderItem && orderItem.completionStatus === 'completed';
+                      
+                      return isCompleted ? (
+                        <button
+                          className="btn btn-secondary"
+                          onClick={() => handleUnmarkCompleted(photo.orderItemId)}
+                        >
+                          Unmark as Completed
+                        </button>
+                      ) : (
+                        <button
+                          className="btn btn-success"
+                          onClick={() => handleMarkCompleted(photo.orderItemId, photo.id)}
+                        >
+                          Mark as Completed
+                        </button>
+                      );
+                    })()}
                     
                     {photo.status === 'needs_review' && (
                       <button
