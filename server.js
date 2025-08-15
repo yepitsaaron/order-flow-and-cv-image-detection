@@ -7,6 +7,7 @@ const cv = require('opencv.js');
 const fs = require('fs');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
+const sharp = require('sharp');
 
 // ============================================================================
 // STATUS ENUMS - Centralized status management for consistency
@@ -136,18 +137,16 @@ const completionPhotoUpload = multer({
 // OpenCV helper functions to replace Sharp functionality
 async function resizeImageWithOpenCV(imagePath, size) {
   try {
-    // Read image file
-    const imageBuffer = fs.readFileSync(imagePath);
+    // For now, use Sharp since OpenCV.js integration is being debugged
+    // This ensures consistent image processing across all functions
+    const sharp = require('sharp');
     
-    // For now, return a simple buffer that can be processed
-    // In a full OpenCV implementation, we would:
-    // 1. Decode the image using cv.imdecode
-    // 2. Resize using cv.resize
-    // 3. Convert to grayscale using cv.cvtColor
-    // 4. Return as buffer
+    const imageBuffer = await sharp(imagePath)
+      .resize(size, size)
+      .grayscale()
+      .raw()
+      .toBuffer();
     
-    // For compatibility, we'll use a simple approach
-    // This is a placeholder - you may want to implement full OpenCV processing
     return imageBuffer;
   } catch (error) {
     console.error('Error in resizeImageWithOpenCV:', error);
@@ -1829,12 +1828,22 @@ app.post('/api/completion-photos', completionPhotoUpload.single('completionPhoto
 // Simple image similarity function for testing (without threshold restrictions)
 async function compareImagesDirectly(photo1Path, photo2Path) {
   try {
-    // Load and preprocess both images using OpenCV
-    const image1 = await resizeImageWithOpenCV(photo1Path, 200);
-    const image2 = await resizeImageWithOpenCV(photo2Path, 200);
+    const sharp = require('sharp');
     
-    // For now, use a simpler approach while we debug OpenCV.js
-    // Calculate basic pixel similarity as fallback
+    // Load and preprocess both images using Sharp for proper processing
+    const image1 = await sharp(photo1Path)
+      .resize(200, 200) // Medium size for good balance of speed and accuracy
+      .grayscale()
+      .raw()
+      .toBuffer();
+    
+    const image2 = await sharp(photo2Path)
+      .resize(200, 200) // Same size for comparison
+      .grayscale()
+      .raw()
+      .toBuffer();
+    
+    // Calculate basic pixel similarity
     let totalPixels = image1.length;
     let similarPixels = 0;
     let totalDifference = 0;
