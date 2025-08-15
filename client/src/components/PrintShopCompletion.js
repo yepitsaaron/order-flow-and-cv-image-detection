@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
+import { buildApiUrl } from '../config';
 import './PrintShopCompletion.css';
 
 const PrintShopCompletion = ({ facilities }) => {
@@ -28,9 +29,9 @@ const PrintShopCompletion = ({ facilities }) => {
 
     try {
       const [photosResponse, ordersResponse, orderItemsResponse] = await Promise.all([
-        axios.get(`/api/print-facilities/${selectedFacilityId}/completion-photos`),
-        axios.get(`/api/print-facilities/${selectedFacilityId}/orders`),
-        axios.get(`/api/print-facilities/${selectedFacilityId}/order-items`)
+        axios.get(buildApiUrl(`/api/print-facilities/${selectedFacilityId}/completion-photos`)),
+        axios.get(buildApiUrl(`/api/print-facilities/${selectedFacilityId}/orders`)),
+        axios.get(buildApiUrl(`/api/print-facilities/${selectedFacilityId}/order-items`))
       ]);
       
       // Ensure we have arrays and handle potential errors
@@ -88,7 +89,7 @@ const PrintShopCompletion = ({ facilities }) => {
       formData.append('completionPhoto', file);
       formData.append('printFacilityId', selectedFacilityId);
 
-      const response = await axios.post('/api/completion-photos', formData, {
+      const response = await axios.post(buildApiUrl('/api/completion-photos'), formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
@@ -134,7 +135,7 @@ const PrintShopCompletion = ({ facilities }) => {
 
     try {
       setLoading(true);
-      const response = await axios.post(`/api/completion-photos/${pendingPhoto.photoId}/assign-order`, {
+      const response = await axios.post(buildApiUrl(`/api/completion-photos/${pendingPhoto.photoId}/assign-order`), {
         orderItemId: selectedMatchOrder
       });
 
@@ -157,7 +158,7 @@ const PrintShopCompletion = ({ facilities }) => {
 
   const handleMarkCompleted = async (orderItemId, completionPhotoId) => {
     try {
-      const response = await axios.post(`/api/order-items/${orderItemId}/complete`, {
+      const response = await axios.post(buildApiUrl(`/api/order-items/${orderItemId}/complete`), {
         completionPhotoId
       });
 
@@ -175,7 +176,7 @@ const PrintShopCompletion = ({ facilities }) => {
 
   const handleUnmarkCompleted = async (orderItemId) => {
     try {
-      const response = await axios.post(`/api/order-items/${orderItemId}/uncomplete`);
+      const response = await axios.post(buildApiUrl(`/api/order-items/${orderItemId}/uncomplete`));
 
       if (response.data.success) {
         setMessage('Order item unmarked as completed successfully');
@@ -195,7 +196,7 @@ const PrintShopCompletion = ({ facilities }) => {
       setSelectedOrderItem('');
       
       // Fetch available order items for this facility
-      const response = await axios.get(`/api/print-facilities/${selectedFacilityId}/available-order-items`);
+      const response = await axios.get(buildApiUrl(`/api/print-facilities/${selectedFacilityId}/available-order-items`));
       setAvailableOrderItems(response.data);
       setShowManualAssignment(true);
     } catch (error) {
@@ -212,7 +213,7 @@ const PrintShopCompletion = ({ facilities }) => {
 
     try {
       setLoading(true);
-      const response = await axios.post(`/api/completion-photos/${photoToAssign.id}/assign-order`, {
+      const response = await axios.post(buildApiUrl(`/api/completion-photos/${photoToAssign.id}/assign-order`), {
         orderItemId: selectedOrderItem
       });
 

@@ -447,20 +447,7 @@ app.get('/api/print-facilities', (req, res) => {
 
 
 
-// Get print facility by ID
-app.get('/api/print-facilities/:facilityId', (req, res) => {
-  const { facilityId } = req.params;
-  
-  db.get(`SELECT * FROM print_facilities WHERE id = ?`, [facilityId], (err, facility) => {
-    if (err) {
-      return res.status(500).json({ error: 'Database error' });
-    }
-    if (!facility) {
-      return res.status(404).json({ error: 'Print facility not found' });
-    }
-    res.json(facility);
-  });
-});
+// Get print facility by ID - MOVED TO END to avoid intercepting specific routes
 
 // Update print facility
 app.put('/api/print-facilities/:facilityId', (req, res) => {
@@ -1575,6 +1562,21 @@ app.get('/api/print-facilities/:facilityId/video-snapshots', (req, res) => {
     console.error('Error fetching video snapshots:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
+});
+
+// Get print facility by ID - moved here to avoid intercepting specific routes
+app.get('/api/print-facilities/:facilityId', (req, res) => {
+  const { facilityId } = req.params;
+  
+  db.get(`SELECT * FROM print_facilities WHERE id = ?`, [facilityId], (err, facility) => {
+    if (err) {
+      return res.status(500).json({ error: 'Database error' });
+    }
+    if (!facility) {
+      return res.status(404).json({ error: 'Print facility not found' });
+    }
+    res.json(facility);
+  });
 });
 
 // Catch all handler for React app
