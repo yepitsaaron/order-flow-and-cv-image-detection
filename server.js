@@ -1263,7 +1263,7 @@ app.get('/api/print-facilities/:facilityId/available-order-items', (req, res) =>
       FROM order_items oi
       JOIN orders o ON oi.orderId = o.id
       LEFT JOIN completion_photos cp ON oi.id = cp.orderItemId AND cp.status = 'matched'
-      WHERE o.printFacilityId = ? AND o.status = 'printing' 
+      WHERE o.printFacilityId = ? AND o.status IN ('printing', 'assigned')
         AND oi.completionStatus = 'pending' AND cp.id IS NULL
       ORDER BY o.assignedAt DESC, oi.id
     `;
