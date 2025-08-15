@@ -1349,6 +1349,7 @@ app.post('/api/order-items/:itemId/uncomplete', (req, res) => {
 
 // Unmatch a completion photo from its order item
 app.post('/api/completion-photos/:photoId/unmatch', (req, res) => {
+  console.log(`Unmatch request received for photo ID: ${req.params.photoId}`);
   try {
     const { photoId } = req.params;
 
@@ -1567,6 +1568,11 @@ app.get('/api/print-facilities/:facilityId/video-snapshots', (req, res) => {
     console.error('Error fetching video snapshots:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
+});
+
+// Test route to verify server is working
+app.get('/api/test-unmatch', (req, res) => {
+  res.json({ message: 'Unmatch test route is working' });
 });
 
 // Get print facility by ID - moved here to avoid intercepting specific routes
