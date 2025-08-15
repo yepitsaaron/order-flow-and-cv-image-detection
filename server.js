@@ -587,7 +587,7 @@ app.get('/api/print-facilities/:facilityId/order-items', (req, res) => {
       SELECT oi.*, o.orderNumber, o.customerName, o.status as orderStatus
       FROM order_items oi
       JOIN orders o ON oi.orderId = o.id
-      WHERE o.printFacilityId = ? AND o.status IN ('printing', 'assigned') AND oi.completionStatus = 'pending'
+      WHERE o.printFacilityId = ? AND o.status IN ('printing', 'assigned')
       ORDER BY o.assignedAt DESC, oi.id
     `;
 
