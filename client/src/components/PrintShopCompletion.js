@@ -2,7 +2,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import './PrintShopCompletion.css';
 
-const PrintShopCompletion = ({ printFacilityId }) => {
+const PrintShopCompletion = ({ facilities }) => {
+  const [selectedFacilityId, setSelectedFacilityId] = useState('');
   const [completionPhotos, setCompletionPhotos] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState('');
@@ -12,21 +13,42 @@ const PrintShopCompletion = ({ printFacilityId }) => {
   const [loading, setLoading] = useState(false);
 
   const fetchCompletionPhotos = useCallback(async () => {
+    if (!selectedFacilityId) {
+      setCompletionPhotos([]);
+      return;
+    }
+
     try {
-      const response = await axios.get(`/api/print-facilities/${printFacilityId}/completion-photos`);
+      const response = await axios.get(`/api/print-facilities/${selectedFacilityId}/completion-photos`);
       setCompletionPhotos(response.data);
     } catch (error) {
       console.error('Error fetching completion photos:', error);
+      setMessage('Error loading completion photos for this facility');
     }
-  }, [printFacilityId]);
+  }, [selectedFacilityId]);
 
   useEffect(() => {
-    if (printFacilityId) {
+    if (selectedFacilityId) {
       fetchCompletionPhotos();
+    } else {
+      setCompletionPhotos([]);
     }
-  }, [printFacilityId, fetchCompletionPhotos]);
+  }, [selectedFacilityId, fetchCompletionPhotos]);
+
+  const handleFacilityChange = (facilityId) => {
+    setSelectedFacilityId(facilityId);
+    setMessage('');
+    setShowManualMatch(false);
+    setPendingPhoto(null);
+    setSelectedMatchOrder('');
+  };
 
   const handleFileUpload = async (event) => {
+    if (!selectedFacilityId) {
+      setMessage('Please select a facility first');
+      return;
+    }
+
     const file = event.target.files[0];
     if (!file) {
       setMessage('Please select a photo file');
@@ -39,7 +61,7 @@ const PrintShopCompletion = ({ printFacilityId }) => {
     try {
       const formData = new FormData();
       formData.append('completionPhoto', file);
-      formData.append('printFacilityId', printFacilityId);
+      formData.append('printFacilityId', selectedFacilityId);
 
       const response = await axios.post('/api/completion-photos', formData, {
         headers: {
@@ -148,9 +170,32 @@ const PrintShopCompletion = ({ printFacilityId }) => {
         <p>Upload photos of completed t-shirts and match them to order items</p>
       </div>
 
-      {/* Upload Section */}
+      {/* Facility Selection */}
       <div className="card">
+        <h4>Select Print Facility</h4>
+        <div className="facility-selection">
+          <label>Choose a print facility:</label>
+          <select
+            value={selectedFacilityId}
+            onChange={(e) => handleFacilityChange(e.target.value)}
+            className="form-control"
+          >
+            <option value="">Select a facility...</option>
+            {facilities.map(facility => (
+              <option key={facility.id} value={facility.id}>
+                {facility.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {/* Upload Section */}
+      <div className={`card ${!selectedFacilityId ? 'disabled' : ''}`}>
         <h4>Upload Completion Photo</h4>
+        {!selectedFacilityId && (
+          <p className="facility-required">Please select a facility first to upload completion photos.</p>
+        )}
         <div className="upload-form">
           <div className="form-group">
             <label>Upload Photo of Completed T-Shirt:</label>
@@ -159,7 +204,7 @@ const PrintShopCompletion = ({ printFacilityId }) => {
               accept="image/*"
               onChange={handleFileUpload}
               className="form-control"
-              disabled={uploading}
+              disabled={uploading || !selectedFacilityId}
             />
             {uploading && <p className="uploading">Uploading and analyzing...</p>}
           </div>
@@ -185,8 +230,10 @@ const PrintShopCompletion = ({ printFacilityId }) => {
       {/* Completion Photos Section */}
       <div className="card">
         <h4>Completion Photos</h4>
-        {completionPhotos.length === 0 ? (
-          <p>No completion photos uploaded yet.</p>
+        {!selectedFacilityId ? (
+          <p>Please select a facility to view completion photos.</p>
+        ) : completionPhotos.length === 0 ? (
+          <p>No completion photos uploaded yet for this facility.</p>
         ) : (
           <div className="completion-photos">
             {completionPhotos.map(photo => (

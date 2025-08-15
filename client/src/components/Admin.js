@@ -136,7 +136,7 @@ const Admin = () => {
 
       {effectiveTab === 'completion' && (
         <PrintShopCompletion 
-          printFacilityId={facilities.length > 0 ? facilities[0].id : null}
+          facilities={facilities}
         />
       )}
 
