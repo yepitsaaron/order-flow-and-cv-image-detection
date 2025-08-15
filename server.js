@@ -1700,6 +1700,96 @@ app.post('/api/completion-photos', completionPhotoUpload.single('completionPhoto
   }
 });
 
+// Simple image similarity function for testing (without threshold restrictions)
+async function compareImagesDirectly(photo1Path, photo2Path) {
+  try {
+    const sharp = require('sharp');
+    const cv = require('opencv4nodejs');
+    
+    // Load and preprocess both images
+    const image1 = await sharp(photo1Path)
+      .resize(300, 300)
+      .grayscale()
+      .toBuffer();
+    
+    const image2 = await sharp(photo2Path)
+      .resize(300, 300)
+      .grayscale()
+      .toBuffer();
+    
+    // Convert to OpenCV format
+    const mat1 = cv.imdecode(image1);
+    const mat2 = cv.imdecode(image2);
+    
+    // Extract SIFT features
+    const sift = new cv.SIFT();
+    const keypoints1 = sift.detect(mat1);
+    const keypoints2 = sift.detect(mat2);
+    
+    // Compute descriptors
+    const descriptors1 = sift.compute(mat1, keypoints1);
+    const descriptors2 = sift.compute(mat2, keypoints2);
+    
+    // Match features using FLANN matcher
+    const matcher = new cv.FlannBasedMatcher();
+    const matches = matcher.match(descriptors1, descriptors2);
+    
+    // Calculate similarity score based on good matches
+    const goodMatches = matches.filter(match => match.distance < 100);
+    const similarityScore = goodMatches.length / Math.max(keypoints1.length, keypoints2.length);
+    
+    return Math.min(similarityScore, 1.0); // Normalize to 0-1 range
+    
+  } catch (error) {
+    console.error('Error in direct image comparison:', error);
+    throw error;
+  }
+}
+
+// Test image similarity between two photos
+app.post('/api/test-image-similarity', completionPhotoUpload.fields([
+  { name: 'photo1', maxCount: 1 },
+  { name: 'photo2', maxCount: 1 }
+]), async (req, res) => {
+  try {
+    if (!req.files || !req.files.photo1 || !req.files.photo2) {
+      return res.status(400).json({ error: 'Both photos are required' });
+    }
+
+    const photo1Path = req.files.photo1[0].filename;
+    const photo2Path = req.files.photo2[0].filename;
+
+    // Create a mock order item for the second photo to test against
+    const mockOrderItem = {
+      id: 'test-item',
+      designImage: photo2Path,
+      color: 'Test',
+      size: 'Test',
+      quantity: 1,
+      orderNumber: 'TEST-001',
+      customerName: 'Test Customer'
+    };
+
+    // Use the direct comparison function to get similarity score without threshold restrictions
+    try {
+      const similarityScore = await compareImagesDirectly(photo1Path, photo2Path);
+      
+      res.json({
+        success: true,
+        similarityScore: similarityScore,
+        message: 'Similarity test completed successfully'
+      });
+    } catch (recognitionError) {
+      console.error('Image recognition error:', recognitionError);
+      res.status(500).json({ error: 'Image recognition failed' });
+    }
+
+  } catch (error) {
+    console.error('Error testing image similarity:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // Serve completion photos - moved here to avoid intercepting API routes
 app.use('/completion-photos', express.static('completion-photos'));
 

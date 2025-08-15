@@ -5,6 +5,7 @@ import './Admin.css';
 import PrintFacilityManager from './PrintFacilityManager';
 import OrderManager from './OrderManager';
 import PrintShopCompletion from './PrintShopCompletion';
+import ImageMatchTester from './ImageMatchTester';
 
 const Admin = () => {
   const location = useLocation();
@@ -115,6 +116,12 @@ const Admin = () => {
         >
           Print Shop Completion
         </Link>
+        <Link
+          to="/admin/image-tester"
+          className={`tab-button ${effectiveTab === 'image-tester' ? 'active' : ''}`}
+        >
+          Image Match Tester
+        </Link>
       </div>
 
       {effectiveTab === 'facilities' && (
@@ -140,8 +147,12 @@ const Admin = () => {
         />
       )}
 
+      {effectiveTab === 'image-tester' && (
+        <ImageMatchTester />
+      )}
+
       {/* Default case - if no tab matches, show facilities */}
-      {!['facilities', 'orders', 'completion'].includes(effectiveTab) && (
+      {!['facilities', 'orders', 'completion', 'image-tester'].includes(effectiveTab) && (
         <PrintFacilityManager 
           facilities={facilities} 
           onFacilityChange={fetchData}
