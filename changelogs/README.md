@@ -40,6 +40,15 @@ This directory contains comprehensive summaries of major changes, improvements, 
   - Unified image processing pipeline across entire JavaScript application
   - Maintained Python stream detection OpenCV usage unchanged
 
+### **PRINT_FACILITY_ORDERS_FIX_SUMMARY.md**
+- **Date**: August 15, 2024
+- **Focus**: Critical fix for print facility orders endpoint returning empty arrays
+- **Key Changes**:
+  - Fixed SQL query parameter order mismatch in facility orders endpoint
+  - Restored orders display in Print Shop Completion tool
+  - Users can now see and work with orders assigned to selected facilities
+  - Core workflow functionality restored for print shop staff
+
 ### **REACT_IMPROVEMENTS_SUMMARY.md**
 - **Date**: August 15, 2024
 - **Focus**: Frontend React component improvements and enhancements

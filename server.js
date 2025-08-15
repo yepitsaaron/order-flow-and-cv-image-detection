@@ -628,7 +628,7 @@ app.get('/api/print-facilities/:facilityId/orders', (req, res) => {
       ORDER BY o.assignedAt DESC
     `;
 
-    db.all(query, [facilityId, ORDER_STATUS.PRINTING, ORDER_STATUS.ASSIGNED, COMPLETION_STATUS.COMPLETED, COMPLETION_STATUS.PENDING], (err, orders) => {
+    db.all(query, [COMPLETION_STATUS.COMPLETED, COMPLETION_STATUS.PENDING, facilityId, ORDER_STATUS.PRINTING, ORDER_STATUS.ASSIGNED], (err, orders) => {
       if (err) {
         console.error('Error fetching orders for facility:', err);
         return res.status(500).json({ error: 'Database error' });
