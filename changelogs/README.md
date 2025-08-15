@@ -13,6 +13,15 @@ This directory contains comprehensive summaries of major changes, improvements, 
   - Elimination of hardcoded status strings
   - Status validation functions
 
+### **ADMIN_ROUTING_FIXES.md**
+- **Date**: August 15, 2024
+- **Focus**: Critical fixes for admin routing and API endpoint issues
+- **Key Changes**:
+  - Fixed Express.js route ordering conflicts
+  - Resolved 404 errors in API endpoints
+  - Corrected static file serving middleware placement
+  - Improved API route precedence handling
+
 ### **REACT_IMPROVEMENTS_SUMMARY.md**
 - **Date**: August 15, 2024
 - **Focus**: Frontend React component improvements and enhancements
@@ -102,6 +111,31 @@ Brief description of what was implemented
 - Potential improvements
 - Related enhancements
 ```
+
+## 📁 Documentation Policy
+
+**ALL future change summaries and major fixes MUST be placed in this `changelogs/` directory:**
+
+### **What Goes Here:**
+- ✅ **SUMMARY.md** files (feature implementations, major changes)
+- ✅ **FIXES.md** files (critical bug fixes, routing issues, major problems)
+- ✅ **IMPROVEMENTS.md** files (enhancements, optimizations)
+- ✅ **REORGANIZATION.md** files (structural changes, refactoring)
+
+### **What Stays in Root:**
+- 📖 **README.md** (project overview, setup instructions)
+- 📖 **stream-detection/README.md** (specific feature documentation)
+- 📖 **__tests__/README.md** (testing documentation)
+
+### **Naming Convention:**
+- Use descriptive names: `FEATURE_NAME_SUMMARY.md`
+- Use consistent formatting: `UPPERCASE_DESCRIPTION.md`
+- Include date in commit message, not filename
+
+### **File Organization:**
+- Keep all changelog files in this single directory
+- Maintain chronological order for easy browsing
+- Update this README when adding new files
 
 ---
 
