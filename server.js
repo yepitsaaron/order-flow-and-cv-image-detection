@@ -1751,6 +1751,8 @@ app.post('/api/test-image-similarity', completionPhotoUpload.fields([
   { name: 'photo1', maxCount: 1 },
   { name: 'photo2', maxCount: 1 }
 ]), async (req, res) => {
+  console.log('Image similarity test request received');
+  console.log('Files:', req.files);
   try {
     if (!req.files || !req.files.photo1 || !req.files.photo2) {
       return res.status(400).json({ error: 'Both photos are required' });
