@@ -120,6 +120,7 @@ function AppContent() {
         <Route path="/admin/facilities" element={<Admin />} />
         <Route path="/admin/orders" element={<Admin />} />
         <Route path="/admin/completion" element={<Admin />} />
+        <Route path="/admin/image-tester" element={<Admin />} />
       </Routes>
     );
   };
