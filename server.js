@@ -1403,6 +1403,31 @@ app.post('/api/order-items/:itemId/complete', (req, res) => {
   }
 });
 
+// Unmark order item as completed
+app.post('/api/order-items/:itemId/uncomplete', (req, res) => {
+  try {
+    const { itemId } = req.params;
+
+    // Update order item completion status back to pending
+    db.run(`UPDATE order_items SET completionStatus = 'pending', completedAt = NULL WHERE id = ?`, 
+      [itemId], function(err) {
+      if (err) {
+        console.error('Error updating order item completion:', err);
+        return res.status(500).json({ error: 'Failed to update completion status' });
+      }
+
+      res.json({ 
+        success: true,
+        message: 'Order item unmarked as completed successfully' 
+      });
+    });
+
+  } catch (error) {
+    console.error('Error uncompleting order item:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // Video detection snapshot - automatically mark t-shirt as printed
 app.post('/api/video-detection/snapshot', completionPhotoUpload.single('snapshot'), async (req, res) => {
   try {

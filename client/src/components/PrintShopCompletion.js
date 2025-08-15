@@ -163,6 +163,22 @@ const PrintShopCompletion = ({ facilities }) => {
     }
   };
 
+  const handleUnmarkCompleted = async (orderItemId) => {
+    try {
+      const response = await axios.post(`/api/order-items/${orderItemId}/uncomplete`);
+
+      if (response.data.success) {
+        setMessage('Order item unmarked as completed successfully');
+        fetchFacilityData();
+      } else {
+        setMessage('Failed to unmark as completed');
+      }
+    } catch (error) {
+      console.error('Error unmarking as completed:', error);
+      setMessage('Failed to unmark as completed');
+    }
+  };
+
   const getStatusBadge = (status) => {
     const statusClasses = {
       'pending': 'status-pending',
@@ -325,6 +341,15 @@ const PrintShopCompletion = ({ facilities }) => {
                         onClick={() => handleMarkCompleted(photo.orderItemId, photo.id)}
                       >
                         Mark as Completed
+                      </button>
+                    )}
+                    
+                    {photo.status === 'matched' && photo.completionStatus === 'completed' && (
+                      <button
+                        className="btn btn-secondary"
+                        onClick={() => handleUnmarkCompleted(photo.orderItemId)}
+                      >
+                        Unmark as Completed
                       </button>
                     )}
                     
