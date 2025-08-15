@@ -1154,9 +1154,6 @@ app.use('/uploads', express.static('uploads'));
 // Serve generated PDFs
 app.use('/orders', express.static('orders'));
 
-// Serve completion photos
-app.use('/completion-photos', express.static('completion-photos'));
-
 // Upload completion photo and attempt automatic image recognition matching - MOVED TO END to avoid intercepting specific routes
 
 // Get completion photos for a print facility
@@ -1702,6 +1699,9 @@ app.post('/api/completion-photos', completionPhotoUpload.single('completionPhoto
     res.status(500).json({ error: 'Internal server error' });
   }
 });
+
+// Serve completion photos - moved here to avoid intercepting API routes
+app.use('/completion-photos', express.static('completion-photos'));
 
 // Catch all handler for React app
 app.get('*', (req, res) => {
