@@ -853,8 +853,8 @@ async function findBestImageMatch(completionPhotoPath, orderItems) {
           .jpeg({ quality: 80 })
           .toBuffer();
         
-        // Calculate similarity score
-        const similarity = calculateImageSimilarity(completionPhotoResized, designImageResized);
+        // Calculate similarity score using OpenCV SIFT features
+        const similarity = await calculateImageSimilarity(completionPhotoResized, designImageResized);
         
         console.log(`Order #${orderItem.orderNumber} - ${orderItem.color} ${orderItem.size}: ${(similarity * 100).toFixed(1)}%`);
         
@@ -943,12 +943,74 @@ async function performImageRecognition(completionPhotoPath, designImagePath, ord
   }
 }
 
-// Calculate image similarity using pixel comparison
-function calculateImageSimilarity(image1Buffer, image2Buffer) {
+// Calculate image similarity using OpenCV SIFT features
+async function calculateImageSimilarity(image1Buffer, image2Buffer) {
   try {
-    // Simple pixel-by-pixel comparison
-    // This is a basic implementation - in production, you might use more sophisticated algorithms
+    const cv = require('opencv.js');
     
+    // Convert Sharp buffers to OpenCV matrices
+    // Note: Sharp buffers are raw pixel data, we need to reshape them
+    const imageSize = 100; // 100x100 images
+    const totalPixels = imageSize * imageSize;
+    
+    // Ensure we have the right amount of data
+    if (image1Buffer.length !== totalPixels || image2Buffer.length !== totalPixels) {
+      console.warn('Image buffer size mismatch, falling back to pixel comparison');
+      return calculateImageSimilarityFallback(image1Buffer, image2Buffer);
+    }
+    
+    // Create OpenCV matrices from the raw pixel data
+    const mat1 = cv.matFromArray(imageSize, imageSize, cv.CV_8UC1, image1Buffer);
+    const mat2 = cv.matFromArray(imageSize, imageSize, cv.CV_8UC1, image2Buffer);
+    
+    // Extract SIFT features
+    const sift = new cv.SIFT();
+    const keypoints1 = sift.detect(mat1);
+    const keypoints2 = sift.detect(mat2);
+    
+    // If no features found, fall back to pixel comparison
+    if (keypoints1.length === 0 || keypoints2.length === 0) {
+      console.log('No SIFT features found, using pixel comparison');
+      mat1.delete();
+      mat2.delete();
+      keypoints1.delete();
+      keypoints2.delete();
+      return calculateImageSimilarityFallback(image1Buffer, image2Buffer);
+    }
+    
+    // Compute descriptors
+    const descriptors1 = sift.compute(mat1, keypoints1);
+    const descriptors2 = sift.compute(mat2, keypoints2);
+    
+    // Match features using FLANN matcher
+    const matcher = new cv.FlannBasedMatcher();
+    const matches = matcher.match(descriptors1, descriptors2);
+    
+    // Calculate similarity score based on good matches
+    const goodMatches = matches.filter(match => match.distance < 100);
+    const similarityScore = goodMatches.length / Math.max(keypoints1.length, keypoints2.length);
+    
+    // Clean up OpenCV objects
+    mat1.delete();
+    mat2.delete();
+    keypoints1.delete();
+    keypoints2.delete();
+    descriptors1.delete();
+    descriptors2.delete();
+    matches.delete();
+    
+    return Math.min(similarityScore, 1.0); // Normalize to 0-1 range
+    
+  } catch (error) {
+    console.error('Error in OpenCV image similarity calculation:', error);
+    console.log('Falling back to pixel comparison');
+    return calculateImageSimilarityFallback(image1Buffer, image2Buffer);
+  }
+}
+
+// Fallback pixel comparison function (original implementation)
+function calculateImageSimilarityFallback(image1Buffer, image2Buffer) {
+  try {
     const pixels1 = new Uint8Array(image1Buffer);
     const pixels2 = new Uint8Array(image2Buffer);
     
@@ -969,7 +1031,7 @@ function calculateImageSimilarity(image1Buffer, image2Buffer) {
     return matchingPixels / totalPixels;
     
   } catch (error) {
-    console.error('Error calculating image similarity:', error);
+    console.error('Error in fallback image similarity calculation:', error);
     return 0;
   }
 }
