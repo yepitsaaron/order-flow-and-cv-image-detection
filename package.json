@@ -9,21 +9,11 @@
     "build": "cd client && npm run build",
     "install-client": "cd client && npm install",
     "heroku-postbuild": "npm run install-client && npm run build",
-    "test": "jest",
-    "test:watch": "jest --watch",
-    "test:coverage": "jest --coverage",
-    "test:backend": "jest",
-    "test:backend:unit": "jest __tests__/unit",
-    "test:backend:integration": "jest __tests__/integration",
-    "test:multi-item": "jest --testNamePattern='Multi-Item'",
-    "test:images": "jest --testNamePattern='Image'",
-    "test:pdf": "jest --testNamePattern='PDF'",
-    "test:all": "npm run test:backend && cd client && npm test",
-    "test:frontend": "cd client && npm test",
-    "test:frontend:watch": "cd client && npm test -- --watch",
-    "test:frontend:coverage": "cd client && npm test -- --coverage",
+    "test": "cd client && npm test",
+    "test:watch": "cd client && npm test -- --watch",
+    "test:coverage": "cd client && npm test -- --coverage",
     "test:components": "cd client && npm test -- --testPathPattern=components",
-    "test:integration:frontend": "cd client && npm test -- --testPathPattern=integration"
+    "test:integration": "cd client && npm test -- --testPathPattern=integration"
   },
   "dependencies": {
     "axios": "^1.11.0",
@@ -37,9 +27,7 @@
     "uuid": "^9.0.1"
   },
   "devDependencies": {
-    "jest": "^30.0.5",
-    "nodemon": "^3.0.1",
-    "supertest": "^7.1.4"
+    "nodemon": "^3.0.1"
   },
   "keywords": [
     "e-commerce",

@@ -1955,7 +1955,29 @@ async function compareImagesDirectly(photo1Path, photo2Path) {
 }
 
 // Test image similarity between two photos
-app.post('/api/test-image-similarity', completionPhotoUpload.fields([
+app.post('/api/test-image-similarity', multer({
+  storage: completionPhotoStorage,
+  fileFilter: function (req, file, cb) {
+    const allowedMimeTypes = [
+      'image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp',
+      'image/bmp', 'image/tiff', 'image/svg+xml'
+    ];
+    const allowedExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.tiff', '.svg'];
+    const fileExtension = path.extname(file.originalname).toLowerCase();
+    
+    if (allowedMimeTypes.includes(file.mimetype) || 
+        file.mimetype.startsWith('image/') || 
+        allowedExtensions.includes(fileExtension) ||
+        file.mimetype === 'application/octet-stream') {
+      cb(null, true);
+    } else {
+      cb(new Error(`File type ${file.mimetype} not allowed. Only image files are accepted.`), false);
+    }
+  },
+  limits: {
+    fileSize: 10 * 1024 * 1024
+  }
+}).fields([
   { name: 'photo1', maxCount: 1 },
   { name: 'photo2', maxCount: 1 }
 ]), async (req, res) => {
