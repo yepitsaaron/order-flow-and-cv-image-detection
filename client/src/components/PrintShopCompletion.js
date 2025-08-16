@@ -306,15 +306,51 @@ const PrintShopCompletion = ({ facilities }) => {
               {facilityOrders.map(order => (
                 <div key={order.id} className="facility-order-item">
                   <div className="order-header">
-                    <h5>Order #{order.orderNumber}</h5>
-                    <span className="order-status">{order.status}</span>
+                    <div className="order-header-left">
+                      <h5>Order #{order.orderNumber}</h5>
+                      <span className="customer-name">{order.customerName}</span>
+                    </div>
+                    <div className="order-header-right">
+                      <span className="order-date">
+                        {new Date(order.assignedAt).toLocaleDateString('en-US', {
+                          year: 'numeric',
+                          month: 'short',
+                          day: 'numeric'
+                        })}
+                      </span>
+                      <span className={`order-status status-${order.status}`}>{order.status}</span>
+                    </div>
                   </div>
-                  <div className="order-details">
-                    <p><strong>Customer:</strong> {order.customerName}</p>
-                    <p><strong>Total Items:</strong> {order.totalItems}</p>
-                    <p><strong>Completed:</strong> {order.completedItems}</p>
-                    <p><strong>Pending:</strong> {order.pendingItems}</p>
-                    <p><strong>Assigned:</strong> {new Date(order.assignedAt).toLocaleDateString()}</p>
+                  
+                  {/* Progress Bar */}
+                  {order.totalItems > 0 && (
+                    <div className="order-progress">
+                      <div className="progress-bar">
+                        <div 
+                          className="progress-fill" 
+                          style={{ width: `${(order.completedItems / order.totalItems) * 100}%` }}
+                        ></div>
+                      </div>
+                      <span className="progress-text">
+                        {Math.round((order.completedItems / order.totalItems) * 100)}% Complete
+                      </span>
+                    </div>
+                  )}
+                  
+                  {/* Completion Summary */}
+                  <div className="completion-summary">
+                    <div className="summary-item">
+                      <span className="summary-label">Total Items:</span>
+                      <span className="summary-value">{order.totalItems}</span>
+                    </div>
+                    <div className="summary-item">
+                      <span className="summary-label">Completed:</span>
+                      <span className="summary-value completed">{order.completedItems}</span>
+                    </div>
+                    <div className="summary-item">
+                      <span className="summary-label">Pending:</span>
+                      <span className="summary-value pending">{order.pendingItems}</span>
+                    </div>
                   </div>
                   
                   {/* Individual Order Items */}
@@ -327,16 +363,20 @@ const PrintShopCompletion = ({ facilities }) => {
                           <div className="item-header">
                             <div className="item-thumbnail">
                               <img 
-                                src={`${buildApiUrl('/uploads')}/${item.designImage}`}
+                                src={`/uploads/${item.designImage}`}
                                 alt={`${item.color} ${item.size} design`}
                                 className="design-thumbnail"
+                                onLoad={(e) => {
+                                  e.target.style.display = 'block';
+                                  e.target.nextSibling.style.display = 'none';
+                                }}
                                 onError={(e) => {
                                   e.target.style.display = 'none';
                                   e.target.nextSibling.style.display = 'block';
                                 }}
                               />
-                              <div className="thumbnail-placeholder" style={{display: 'none'}}>
-                                <span>No Image</span>
+                              <div className="thumbnail-placeholder" style={{display: 'block'}}>
+                                <span>Loading...</span>
                               </div>
                             </div>
                             <div className="item-info">
@@ -344,6 +384,7 @@ const PrintShopCompletion = ({ facilities }) => {
                                 <span className="item-color-size"><strong>{item.color} {item.size}</strong></span>
                                 <span className="item-quantity">Qty: {item.quantity}</span>
                                 <span className="item-price">${item.price}</span>
+                                <span className="item-id">ID: {item.id}</span>
                               </div>
                               <div className="item-status-container">
                                 <span className={`item-status ${item.completionStatus}`}>
