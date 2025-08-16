@@ -1,0 +1,20 @@
+# Python Testing Requirements
+pytest>=7.0.0
+pytest-cov>=4.0.0
+pytest-mock>=3.10.0
+pytest-asyncio>=0.21.0
+
+# OpenCV and Image Processing
+opencv-python>=4.8.0
+numpy>=2.0.0
+Pillow>=9.0.0
+
+# HTTP Requests for API Testing
+requests>=2.28.0
+requests-mock>=1.10.0
+
+# Additional Testing Utilities
+coverage>=6.0.0
+mypy>=1.0.0
+black>=22.0.0
+flake8>=5.0.0 
